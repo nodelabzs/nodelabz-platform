@@ -28,6 +28,10 @@ coverage/
 # Prisma
 packages/db/generated/
 
+# Playwright
+playwright-report/
+test-results/
+
 # Misc
 *.log
 *.tsbuildinfo

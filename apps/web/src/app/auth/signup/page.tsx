@@ -1,7 +1,7 @@
-import { LoginForm } from "./login-form";
+import { SignUpForm } from "./signup-form";
 import Link from "next/link";
 
-export default function LoginPage() {
+export default function SignUpPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-neutral-50">
       <div className="w-full max-w-md space-y-8 rounded-xl bg-white p-8 shadow-sm">
@@ -10,14 +10,14 @@ export default function LoginPage() {
             NodeLabz
           </h1>
           <p className="mt-2 text-sm text-neutral-600">
-            Inicia sesion en tu cuenta
+            Crea tu cuenta y empieza tu prueba gratis de 7 dias
           </p>
         </div>
-        <LoginForm />
+        <SignUpForm />
         <p className="text-center text-sm text-neutral-500">
-          No tienes cuenta?{" "}
-          <Link href="/auth/signup" className="font-medium text-blue-600 hover:text-blue-500">
-            Registrate gratis
+          Ya tienes cuenta?{" "}
+          <Link href="/auth/login" className="font-medium text-blue-600 hover:text-blue-500">
+            Inicia sesion
           </Link>
         </p>
       </div>

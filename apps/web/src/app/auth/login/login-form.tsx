@@ -17,13 +17,17 @@ export function LoginForm() {
     setError(null);
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({
+    const { error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
-    if (error) {
-      setError(error.message);
+    if (signInError) {
+      setError(
+        signInError.message === "Invalid login credentials"
+          ? "Email o contrasena incorrectos"
+          : signInError.message
+      );
       setLoading(false);
       return;
     }
@@ -47,6 +51,24 @@ export function LoginForm() {
           {error}
         </div>
       )}
+
+      <button
+        type="button"
+        onClick={handleGoogleLogin}
+        className="w-full rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+      >
+        Continuar con Google
+      </button>
+
+      <div className="relative my-4">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-neutral-300" />
+        </div>
+        <div className="relative flex justify-center text-sm">
+          <span className="bg-white px-2 text-neutral-500">o</span>
+        </div>
+      </div>
+
       <div>
         <label htmlFor="email" className="block text-sm font-medium text-neutral-700">
           Email
@@ -62,7 +84,7 @@ export function LoginForm() {
       </div>
       <div>
         <label htmlFor="password" className="block text-sm font-medium text-neutral-700">
-          Contraseña
+          Contrasena
         </label>
         <input
           id="password"
@@ -78,22 +100,7 @@ export function LoginForm() {
         disabled={loading}
         className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
       >
-        {loading ? "Iniciando sesión..." : "Iniciar sesión"}
-      </button>
-      <div className="relative my-4">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-neutral-300" />
-        </div>
-        <div className="relative flex justify-center text-sm">
-          <span className="bg-white px-2 text-neutral-500">o</span>
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={handleGoogleLogin}
-        className="w-full rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-      >
-        Continuar con Google
+        {loading ? "Iniciando sesion..." : "Iniciar sesion"}
       </button>
     </form>
   );
