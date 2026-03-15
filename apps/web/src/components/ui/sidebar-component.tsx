@@ -13,6 +13,7 @@ import {
   Plug,
   Settings,
   User,
+  Sparkles,
 } from "lucide-react";
 
 interface NavItem {
@@ -134,9 +135,13 @@ const contentMap: Record<string, DetailContent> = {
 export function IconNavigation({
   activeSection,
   onSectionChange,
+  onAiChatToggle,
+  aiChatOpen,
 }: {
   activeSection: string;
   onSectionChange: (section: string) => void;
+  onAiChatToggle?: () => void;
+  aiChatOpen?: boolean;
 }) {
   return (
     <aside className="flex flex-col items-center py-2 w-[48px] h-full border-r border-[#2e2e2e] flex-shrink-0" style={{ backgroundColor: '#1c1c1c' }}>
@@ -163,6 +168,24 @@ export function IconNavigation({
       </div>
       <div className="flex-1" />
       <div className="flex flex-col gap-[2px] w-full items-center px-1 pb-1">
+        {/* AI Chat button */}
+        <button
+          type="button"
+          onClick={onAiChatToggle}
+          title="Chat IA"
+          className={`relative flex items-center justify-center w-[38px] h-[38px] rounded-md transition-colors mb-1 ${
+            aiChatOpen
+              ? "text-[#ededed]"
+              : "text-[#f59e0b] hover:text-[#fbbf24] hover:bg-[#2a2a2a]"
+          }`}
+          style={aiChatOpen ? { backgroundColor: '#2a2a2a' } : {}}
+        >
+          {aiChatOpen && (
+            <div className="absolute left-[-4px] top-1/2 -translate-y-1/2 w-[3px] h-[20px] rounded-r-sm" style={{ backgroundColor: '#3ecf8e' }} />
+          )}
+          <Sparkles size={18} />
+          <div className="absolute top-[6px] right-[6px] w-[6px] h-[6px] rounded-full" style={{ backgroundColor: '#f59e0b' }} />
+        </button>
         <button
           type="button"
           onClick={() => onSectionChange("settings")}
