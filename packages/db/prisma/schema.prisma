@@ -1,0 +1,419 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================
+// TENANTS & AUTH
+// ============================
+
+enum Plan {
+  INICIO
+  CRECIMIENTO
+  PROFESIONAL
+  AGENCIA
+}
+
+model Tenant {
+  id               String    @id @default(uuid())
+  name             String
+  slug             String    @unique
+  industry         String?
+  companySize      String?
+  plan             Plan      @default(INICIO)
+  trialEndsAt      DateTime?
+  stripeCustomerId String?
+  language         String    @default("es")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  users            User[]
+  contacts         Contact[]
+  deals            Deal[]
+  pipelines        Pipeline[]
+  integrations     Integration[]
+  conversations    Conversation[]
+  aiMemories       AiMemory[]
+  fieldDefinitions FieldDefinition[]
+  roles            Role[]
+  workflows        Workflow[]
+  emailTemplates   EmailTemplate[]
+  emailCampaigns   EmailCampaign[]
+  campaignMetrics  CampaignMetric[]
+  healthScores     HealthScore[]
+  activities       Activity[]
+  messages         Message[]
+
+  @@map("tenants")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supabaseId  String   @unique
+  email       String
+  name        String
+  avatarUrl   String?
+  roleId      String
+  role        Role     @relation(fields: [roleId], references: [id])
+  preferences Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([supabaseId])
+  @@map("users")
+}
+
+model Role {
+  id         String  @id @default(uuid())
+  tenantId   String
+  tenant     Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name       String
+  isSystem   Boolean @default(false)
+  permissions Json
+
+  users      User[]
+
+  @@unique([tenantId, name])
+  @@map("roles")
+}
+
+// ============================
+// CRM
+// ============================
+
+enum ScoreLabel {
+  HOT
+  WARM
+  COLD
+}
+
+model Contact {
+  id          String     @id @default(uuid())
+  tenantId    String
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  firstName   String
+  lastName    String?
+  email       String?
+  phone       String?
+  company     String?
+  source      String?
+  sourceId    String?
+  score       Int        @default(0)
+  scoreLabel  ScoreLabel @default(COLD)
+  stage       String?
+  assignedTo  String?
+  tags        String[]
+  customData  Json?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  activities  Activity[]
+  deals       Deal[]
+  messages    Message[]
+
+  @@index([tenantId])
+  @@index([tenantId, email])
+  @@index([tenantId, scoreLabel])
+  @@map("contacts")
+}
+
+enum FieldType {
+  TEXT
+  NUMBER
+  DATE
+  DROPDOWN
+  BOOLEAN
+  EMAIL
+  PHONE
+  URL
+}
+
+model FieldDefinition {
+  id       String    @id @default(uuid())
+  tenantId String
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name     String
+  key      String
+  type     FieldType
+  options  String[]
+  required Boolean   @default(false)
+  entity   String
+
+  @@unique([tenantId, entity, key])
+  @@map("field_definitions")
+}
+
+model Pipeline {
+  id        String  @id @default(uuid())
+  tenantId  String
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  stages    Json
+  isDefault Boolean @default(false)
+
+  deals     Deal[]
+
+  @@index([tenantId])
+  @@map("pipelines")
+}
+
+model Deal {
+  id          String    @id @default(uuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contactId   String
+  contact     Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  pipelineId  String
+  pipeline    Pipeline  @relation(fields: [pipelineId], references: [id])
+  title       String
+  value       Decimal?
+  currency    String    @default("USD")
+  stageId     String
+  probability Int?
+  closedAt    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, pipelineId])
+  @@map("deals")
+}
+
+model Activity {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  type      String
+  subject   String?
+  body      String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+  createdBy String?
+
+  @@index([tenantId])
+  @@index([contactId])
+  @@map("activities")
+}
+
+// ============================
+// MESSAGING
+// ============================
+
+enum Channel {
+  EMAIL
+  WHATSAPP
+  SMS
+  INSTAGRAM_DM
+  VOICE
+}
+
+enum Direction {
+  INBOUND
+  OUTBOUND
+}
+
+model Message {
+  id        String    @id @default(uuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  channel   Channel
+  direction Direction
+  content   String
+  metadata  Json?
+  status    String    @default("sent")
+  createdAt DateTime  @default(now())
+
+  @@index([tenantId])
+  @@index([contactId])
+  @@index([tenantId, channel])
+  @@map("messages")
+}
+
+// ============================
+// INTEGRATIONS
+// ============================
+
+model Integration {
+  id           String    @id @default(uuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  platform     String
+  accessToken  String
+  refreshToken String?
+  expiresAt    DateTime?
+  accountId    String?
+  metadata     Json?
+  status       String    @default("active")
+  lastSyncAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([tenantId, platform, accountId])
+  @@index([tenantId])
+  @@map("integrations")
+}
+
+// ============================
+// AI
+// ============================
+
+model Conversation {
+  id        String                @id @default(uuid())
+  tenantId  String
+  tenant    Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String
+  title     String?
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+
+  messages  ConversationMessage[]
+
+  @@index([tenantId])
+  @@index([tenantId, userId])
+  @@map("conversations")
+}
+
+model ConversationMessage {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String
+  content        String
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+  @@map("conversation_messages")
+}
+
+model AiMemory {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category  String
+  key       String
+  value     String
+  source    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, category, key])
+  @@index([tenantId])
+  @@map("ai_memories")
+}
+
+// ============================
+// MARKETING DATA
+// ============================
+
+model CampaignMetric {
+  id            String   @id @default(uuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  integrationId String
+  platform      String
+  campaignId    String
+  campaignName  String
+  date          DateTime
+  impressions   Int      @default(0)
+  clicks        Int      @default(0)
+  spend         Decimal  @default(0)
+  conversions   Int      @default(0)
+  revenue       Decimal  @default(0)
+  ctr           Decimal?
+  cpc           Decimal?
+  roas          Decimal?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, platform, date])
+  @@index([tenantId, campaignId])
+  @@map("campaign_metrics")
+}
+
+model HealthScore {
+  id                  String   @id @default(uuid())
+  tenantId            String
+  tenant              Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  overallScore        Int
+  adPerformance       Int
+  contentEngagement   Int
+  emailEffectiveness  Int
+  leadConversion      Int
+  revenueAttribution  Int
+  insights            Json
+  recommendations     Json
+  calculatedAt        DateTime @default(now())
+
+  @@index([tenantId, calculatedAt])
+  @@map("health_scores")
+}
+
+// ============================
+// AUTOMATION
+// ============================
+
+model Workflow {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  trigger   Json
+  nodes     Json
+  edges     Json
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("workflows")
+}
+
+// ============================
+// EMAIL
+// ============================
+
+model EmailTemplate {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  subject   String
+  content   Json
+  html      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("email_templates")
+}
+
+model EmailCampaign {
+  id           String    @id @default(uuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  templateId   String
+  name         String
+  segmentQuery Json?
+  scheduledAt  DateTime?
+  sentAt       DateTime?
+  status       String    @default("draft")
+  stats        Json?
+  createdAt    DateTime  @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("email_campaigns")
+}

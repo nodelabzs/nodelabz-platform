@@ -1,0 +1,9 @@
+{
+  "name": "@nodelabz/config",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    "./eslint": "./eslint.config.mjs",
+    "./typescript": "./tsconfig.base.json"
+  }
+}
