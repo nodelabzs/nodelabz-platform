@@ -4,36 +4,51 @@ test.describe("Auth Flow", () => {
   test("login page renders correctly", async ({ page }) => {
     await page.goto("/auth/login");
 
-    await expect(page.getByText("NodeLabz")).toBeVisible();
-    await expect(page.getByText("Inicia sesion en tu cuenta")).toBeVisible();
+    await expect(page.getByText("Bienvenido")).toBeVisible();
+    await expect(page.getByText("Inicia sesion para continuar")).toBeVisible();
     await expect(page.getByLabel("Email")).toBeVisible();
     await expect(page.getByLabel("Contrasena")).toBeVisible();
     await expect(page.getByRole("button", { name: "Iniciar sesion" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Continuar con Google" })).toBeVisible();
-    await expect(page.getByText("Registrate gratis")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Google" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "GitHub" })).toBeVisible();
+    await expect(page.getByText("Registrate")).toBeVisible();
   });
 
   test("signup page renders correctly", async ({ page }) => {
     await page.goto("/auth/signup");
 
-    await expect(page.getByText("NodeLabz")).toBeVisible();
-    await expect(page.getByText("Crea tu cuenta")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Crear cuenta" })).toBeVisible();
+    await expect(page.getByText("Prueba gratis por 7 dias")).toBeVisible();
     await expect(page.getByLabel("Tu nombre")).toBeVisible();
     await expect(page.getByLabel("Nombre de tu empresa")).toBeVisible();
     await expect(page.getByLabel("Email")).toBeVisible();
     await expect(page.getByLabel("Contrasena")).toBeVisible();
     await expect(page.getByRole("button", { name: "Crear cuenta gratis" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Registrarse con Google" })).toBeVisible();
-    await expect(page.getByText("Inicia sesion")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Google" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "GitHub" })).toBeVisible();
+  });
+
+  test("forgot password page renders correctly", async ({ page }) => {
+    await page.goto("/auth/forgot-password");
+
+    await expect(page.getByText("Recuperar acceso")).toBeVisible();
+    await expect(page.getByLabel("Email")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Enviar enlace" })).toBeVisible();
   });
 
   test("navigate between login and signup", async ({ page }) => {
     await page.goto("/auth/login");
-    await page.getByText("Registrate gratis").click();
+    await page.getByText("Registrate").click();
     await expect(page).toHaveURL(/\/auth\/signup/);
 
     await page.getByText("Inicia sesion", { exact: false }).first().click();
     await expect(page).toHaveURL(/\/auth\/login/);
+  });
+
+  test("navigate to forgot password", async ({ page }) => {
+    await page.goto("/auth/login");
+    await page.getByText("Olvidaste tu contrasena?").click();
+    await expect(page).toHaveURL(/\/auth\/forgot-password/);
   });
 
   test("login shows error with invalid credentials", async ({ page }) => {
@@ -43,21 +58,7 @@ test.describe("Auth Flow", () => {
     await page.getByLabel("Contrasena").fill("wrongpassword");
     await page.getByRole("button", { name: "Iniciar sesion" }).click();
 
-    // Should show error message
     await expect(page.getByText(/incorrectos|Invalid/i)).toBeVisible({ timeout: 10000 });
-  });
-
-  test("signup shows validation errors for short password", async ({ page }) => {
-    await page.goto("/auth/signup");
-
-    await page.getByLabel("Tu nombre").fill("Test User");
-    await page.getByLabel("Nombre de tu empresa").fill("Test Co");
-    await page.getByLabel("Email").fill("test@test.com");
-    await page.getByLabel("Contrasena").fill("short");
-
-    await page.getByRole("button", { name: "Crear cuenta gratis" }).click();
-
-    // HTML5 minLength=8 validation should prevent submission
   });
 
   test("unauthenticated user redirected to login from dashboard", async ({ page }) => {

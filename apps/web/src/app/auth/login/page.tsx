@@ -1,26 +1,5 @@
 import { LoginForm } from "./login-form";
-import Link from "next/link";
 
 export default function LoginPage() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-neutral-50">
-      <div className="w-full max-w-md space-y-8 rounded-xl bg-white p-8 shadow-sm">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold tracking-tight text-neutral-900">
-            NodeLabz
-          </h1>
-          <p className="mt-2 text-sm text-neutral-600">
-            Inicia sesion en tu cuenta
-          </p>
-        </div>
-        <LoginForm />
-        <p className="text-center text-sm text-neutral-500">
-          No tienes cuenta?{" "}
-          <Link href="/auth/signup" className="font-medium text-blue-600 hover:text-blue-500">
-            Registrate gratis
-          </Link>
-        </p>
-      </div>
-    </div>
-  );
+  return <LoginForm />;
 }

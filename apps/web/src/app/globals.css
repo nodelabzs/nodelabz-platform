@@ -1,1 +1,13 @@
 @import "tailwindcss";
+
+/* Override browser autofill styling for dark auth forms */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: #ffffff !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  caret-color: #ffffff;
+}
+
