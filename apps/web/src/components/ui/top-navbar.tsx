@@ -12,8 +12,10 @@ export function TopNavbar({
   return (
     <header className="h-[48px] border-b border-[#2e2e2e] flex items-center justify-between px-4 flex-shrink-0" style={{ backgroundColor: '#1c1c1c' }}>
       <div className="flex items-center gap-3 text-[13px]">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.png" alt="NodeLabz" width={18} height={18} className="flex-shrink-0" />
+        <a href="/dashboard/org">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="NodeLabz" width={18} height={18} className="flex-shrink-0 hover:opacity-80 transition-opacity" />
+        </a>
         <span className="text-[#444]">/</span>
         <div className="flex items-center gap-1.5">
           <span className="text-[#ededed] text-[13px]">{tenantName || "NodeLabz"}</span>
