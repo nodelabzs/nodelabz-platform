@@ -29,8 +29,8 @@ export async function GET(request: Request) {
           language: "es",
         });
 
-        // New users go to onboarding, existing users go to dashboard
-        const destination = isNew ? "/onboarding" : "/dashboard";
+        // New users go to onboarding, existing users go through loading screen
+        const destination = isNew ? "/onboarding" : "/auth/loading";
         return NextResponse.redirect(`${origin}${destination}`);
       }
     }

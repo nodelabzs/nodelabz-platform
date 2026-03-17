@@ -44,10 +44,12 @@ model Tenant {
   workflows        Workflow[]
   emailTemplates   EmailTemplate[]
   emailCampaigns   EmailCampaign[]
+  sequences        Sequence[]
   campaignMetrics  CampaignMetric[]
   healthScores     HealthScore[]
   activities       Activity[]
   messages         Message[]
+  notifications    Notification[]
 
   @@map("tenants")
 }
@@ -340,6 +342,7 @@ model CampaignMetric {
   metadata      Json?
   createdAt     DateTime @default(now())
 
+  @@unique([tenantId, integrationId, campaignId, date])
   @@index([tenantId, platform, date])
   @@index([tenantId, campaignId])
   @@map("campaign_metrics")
@@ -418,6 +421,58 @@ model EmailCampaign {
   @@index([tenantId])
   @@index([tenantId, status])
   @@map("email_campaigns")
+}
+
+model Sequence {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  steps     Json     // [{ order: number, templateId: string, delayHours: number }]
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  enrollments SequenceEnrollment[]
+
+  @@index([tenantId])
+  @@map("sequences")
+}
+
+model SequenceEnrollment {
+  id          String    @id @default(uuid())
+  sequenceId  String
+  contactId   String
+  currentStep Int       @default(0)
+  status      String    @default("active") // active, completed, paused, unsubscribed
+  nextSendAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  sequence    Sequence  @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+
+  @@index([sequenceId, status])
+  @@index([nextSendAt])
+  @@map("sequence_enrollments")
+}
+
+// ============================
+// NOTIFICATIONS
+// ============================
+
+model Notification {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String?
+  type      String   // ai_digest, integration_error, lead_alert, health_drop
+  title     String
+  body      String
+  metadata  Json?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, read])
+  @@index([tenantId, createdAt])
+  @@map("notifications")
 }
 
 // ============================

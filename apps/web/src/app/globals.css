@@ -11,3 +11,112 @@ input:-webkit-autofill:active {
   caret-color: #ffffff;
 }
 
+/* ---- Box Loader ---- */
+.boxes {
+  --size: 32px;
+  --duration: 800ms;
+  height: calc(var(--size) * 2);
+  width: calc(var(--size) * 3);
+  position: relative;
+  transform-style: preserve-3d;
+  transform-origin: 50% 50%;
+  transform: rotateX(60deg) rotateZ(45deg) rotateY(0deg) translateZ(0px);
+}
+
+.box {
+  width: var(--size);
+  height: var(--size);
+  top: 0;
+  left: 0;
+  position: absolute;
+  transform-style: preserve-3d;
+}
+
+.box-1 {
+  transform: translate(100%, 0);
+  animation: box1 var(--duration) linear infinite;
+}
+
+.box-2 {
+  transform: translate(0, 100%);
+  animation: box2 var(--duration) linear infinite;
+}
+
+.box-3 {
+  transform: translate(100%, 100%);
+  animation: box3 var(--duration) linear infinite;
+}
+
+.box-4 {
+  transform: translate(200%, 0);
+  animation: box4 var(--duration) linear infinite;
+}
+
+.face {
+  position: absolute;
+  width: var(--size);
+  height: var(--size);
+}
+
+.face-front {
+  background-color: #3ecf8e;
+  transform: rotateY(0deg) translateZ(calc(var(--size) / 2));
+}
+
+.face-right {
+  background-color: #2ba86e;
+  transform: rotateY(90deg) translateZ(calc(var(--size) / 2));
+}
+
+.face-top {
+  background-color: #4ade80;
+  transform: rotateX(90deg) translateZ(calc(var(--size) / 2));
+}
+
+.face-back {
+  background-color: #22c55e;
+  transform: rotateY(180deg) translateZ(calc(var(--size) / 2));
+}
+
+@keyframes box1 {
+  0%, 50% {
+    transform: translate(100%, 0);
+  }
+  100% {
+    transform: translate(200%, 0);
+  }
+}
+
+@keyframes box2 {
+  0% {
+    transform: translate(0, 100%);
+  }
+  50% {
+    transform: translate(0, 0);
+  }
+  100% {
+    transform: translate(100%, 0);
+  }
+}
+
+@keyframes box3 {
+  0%, 50% {
+    transform: translate(100%, 100%);
+  }
+  100% {
+    transform: translate(0, 100%);
+  }
+}
+
+@keyframes box4 {
+  0% {
+    transform: translate(200%, 0);
+  }
+  50% {
+    transform: translate(200%, 100%);
+  }
+  100% {
+    transform: translate(100%, 100%);
+  }
+}
+

@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
+import { trpc } from "@/lib/trpc";
 import {
   ReactFlow,
   Background,
@@ -52,25 +53,28 @@ function Badge({ text, color = "#3ecf8e" }: { text: string; color?: string }) {
   );
 }
 
-const MOCK_CONTACTS = [
-  { name: "Maria Rodriguez", email: "maria@empresa.cr", company: "TechCR", score: 85, label: "HOT", source: "Meta Ads" },
-  { name: "Carlos Mora", email: "carlos@startup.co", company: "StartupCo", score: 72, label: "WARM", source: "Website" },
-  { name: "Ana Jimenez", email: "ana@retail.cr", company: "RetailPlus", score: 91, label: "HOT", source: "Google Ads" },
-  { name: "Jose Vargas", email: "jose@consulting.cr", company: "ConsultCR", score: 45, label: "COLD", source: "Referral" },
-  { name: "Laura Hernandez", email: "laura@hotel.cr", company: "HotelSJO", score: 68, label: "WARM", source: "LinkedIn" },
-  { name: "Roberto Chen", email: "roberto@import.cr", company: "ImportadoraCR", score: 33, label: "COLD", source: "Email" },
-  { name: "Sofia Montero", email: "sofia@beauty.cr", company: "BeautyCR", score: 78, label: "WARM", source: "Instagram" },
-  { name: "Diego Solis", email: "diego@agro.cr", company: "AgroCR", score: 95, label: "HOT", source: "Meta Ads" },
-];
-
 const LABEL_COLORS: Record<string, string> = { HOT: "#ef4444", WARM: "#f59e0b", COLD: "#6366f1" };
 
 export function TodosContactosPage() {
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [scoreFilter, setScoreFilter] = useState<string | undefined>();
+  const { data, isLoading } = trpc.contacts.list.useQuery({
+    page,
+    limit: 20,
+    search: search || undefined,
+    scoreLabel: scoreFilter as "HOT" | "WARM" | "COLD" | undefined,
+  });
+
+  const contacts = data?.contacts ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = data?.totalPages ?? 1;
+
   return (
     <>
       <SectionHeader
         title="Todos los Contactos"
-        description={`${MOCK_CONTACTS.length} contactos en tu base de datos`}
+        description={`${total} contactos en tu base de datos`}
         action={
           <button className="flex items-center gap-1.5 text-[12px] text-black px-3 py-1.5 rounded font-medium" style={{ backgroundColor: "#3ecf8e" }}>
             <Plus size={14} />
@@ -81,40 +85,125 @@ export function TodosContactosPage() {
       <div className="flex items-center gap-2 mb-4">
         <div className="flex items-center gap-2 flex-1 h-[36px] px-3 rounded-lg border border-[#333]" style={{ backgroundColor: "#222" }}>
           <Search size={14} className="text-[#666]" />
-          <input placeholder="Buscar contactos..." className="flex-1 bg-transparent text-[13px] text-[#ededed] placeholder:text-[#555] outline-none" />
+          <input
+            placeholder="Buscar contactos..."
+            className="flex-1 bg-transparent text-[13px] text-[#ededed] placeholder:text-[#555] outline-none"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          />
         </div>
-        <button className="text-[12px] px-3 py-2 rounded border border-[#333] text-[#ccc]">Filtrar</button>
+        {(["HOT", "WARM", "COLD"] as const).map((label) => (
+          <button
+            key={label}
+            onClick={() => { setScoreFilter(scoreFilter === label ? undefined : label); setPage(1); }}
+            className="text-[12px] px-3 py-2 rounded border transition-colors"
+            style={{
+              borderColor: scoreFilter === label ? LABEL_COLORS[label] : "#333",
+              color: scoreFilter === label ? LABEL_COLORS[label] : "#ccc",
+              backgroundColor: scoreFilter === label ? LABEL_COLORS[label] + "15" : "transparent",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+        <button
+          onClick={() => { setScoreFilter(undefined); setPage(1); }}
+          className="text-[12px] px-3 py-2 rounded border transition-colors"
+          style={{
+            borderColor: !scoreFilter ? "#3ecf8e" : "#333",
+            color: !scoreFilter ? "#3ecf8e" : "#ccc",
+          }}
+        >
+          All
+        </button>
       </div>
-      <div className="rounded-lg border border-[#2e2e2e] overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr style={{ backgroundColor: "#1e1e1e" }}>
-              {["Nombre", "Email", "Empresa", "Score", "Label", "Fuente"].map((h) => (
-                <th key={h} className="text-left text-[11px] uppercase tracking-wider text-[#888] font-medium px-4 py-3 border-b border-[#2e2e2e]">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {MOCK_CONTACTS.map((c, i) => (
-              <tr key={i} className="border-b border-[#2e2e2e] last:border-0 hover:bg-[#1e1e1e] transition-colors cursor-pointer">
-                <td className="px-4 py-3 text-[13px] text-[#ededed] font-medium">{c.name}</td>
-                <td className="px-4 py-3 text-[13px] text-[#888]">{c.email}</td>
-                <td className="px-4 py-3 text-[13px] text-[#ccc]">{c.company}</td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-1.5 rounded-full" style={{ backgroundColor: "#2a2a2a" }}>
-                      <div className="h-1.5 rounded-full" style={{ width: `${c.score}%`, backgroundColor: c.score >= 80 ? "#3ecf8e" : c.score >= 50 ? "#f59e0b" : "#ef4444" }} />
-                    </div>
-                    <span className="text-[12px] text-[#888]">{c.score}</span>
-                  </div>
-                </td>
-                <td className="px-4 py-3"><Badge text={c.label} color={LABEL_COLORS[c.label]} /></td>
-                <td className="px-4 py-3 text-[13px] text-[#888]">{c.source}</td>
-              </tr>
+
+      {isLoading ? (
+        <div className="rounded-lg border border-[#2e2e2e] overflow-hidden">
+          <div className="space-y-0">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="flex gap-4 px-4 py-3 border-b border-[#2e2e2e] last:border-0" style={{ backgroundColor: "#1e1e1e" }}>
+                <div className="h-4 w-28 rounded bg-[#2a2a2a] animate-pulse" />
+                <div className="h-4 w-36 rounded bg-[#2a2a2a] animate-pulse" />
+                <div className="h-4 w-20 rounded bg-[#2a2a2a] animate-pulse" />
+                <div className="h-4 w-12 rounded bg-[#2a2a2a] animate-pulse" />
+                <div className="h-4 w-14 rounded bg-[#2a2a2a] animate-pulse" />
+              </div>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        </div>
+      ) : contacts.length === 0 ? (
+        <div className="rounded-lg border border-[#2e2e2e] p-12 text-center" style={{ backgroundColor: "#1e1e1e" }}>
+          <Users size={32} className="text-[#555] mx-auto mb-3" />
+          <p className="text-[14px] text-[#ededed] font-medium mb-1">No tienes contactos</p>
+          <p className="text-[12px] text-[#888]">Importa tu primer contacto.</p>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-[#2e2e2e] overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr style={{ backgroundColor: "#1e1e1e" }}>
+                {["Nombre", "Email", "Telefono", "Empresa", "Score", "Tags"].map((h) => (
+                  <th key={h} className="text-left text-[11px] uppercase tracking-wider text-[#888] font-medium px-4 py-3 border-b border-[#2e2e2e]">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {contacts.map((c) => (
+                <tr key={c.id} className="border-b border-[#2e2e2e] last:border-0 hover:bg-[#1e1e1e] transition-colors cursor-pointer">
+                  <td className="px-4 py-3 text-[13px] text-[#ededed] font-medium">
+                    {c.firstName} {c.lastName ?? ""}
+                  </td>
+                  <td className="px-4 py-3 text-[13px] text-[#888]">{c.email ?? "—"}</td>
+                  <td className="px-4 py-3 text-[13px] text-[#888]">{c.phone ?? "—"}</td>
+                  <td className="px-4 py-3 text-[13px] text-[#ccc]">{c.company ?? "—"}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-1.5 rounded-full" style={{ backgroundColor: "#2a2a2a" }}>
+                        <div className="h-1.5 rounded-full" style={{ width: `${c.score}%`, backgroundColor: c.score >= 80 ? "#3ecf8e" : c.score >= 50 ? "#f59e0b" : "#ef4444" }} />
+                      </div>
+                      <Badge text={c.scoreLabel} color={LABEL_COLORS[c.scoreLabel] ?? "#888"} />
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-1 flex-wrap">
+                      {c.tags.slice(0, 3).map((tag) => (
+                        <Badge key={tag} text={tag} color="#6366f1" />
+                      ))}
+                      {c.tags.length > 3 && <span className="text-[10px] text-[#888]">+{c.tags.length - 3}</span>}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <span className="text-[12px] text-[#888]">
+            Pagina {page} de {totalPages} ({total} contactos)
+          </span>
+          <div className="flex gap-2">
+            <button
+              disabled={page <= 1}
+              onClick={() => setPage(page - 1)}
+              className="text-[12px] px-3 py-1.5 rounded border border-[#333] text-[#ccc] disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Anterior
+            </button>
+            <button
+              disabled={page >= totalPages}
+              onClick={() => setPage(page + 1)}
+              className="text-[12px] px-3 py-1.5 rounded border border-[#333] text-[#ccc] disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Siguiente
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -461,13 +550,6 @@ const pipelineMockDeals: PipelineDeal[] = [
   { company: "Central Logistica", value: 4000, daysInStage: 18, owner: "Pedro G.", initials: "PG", avatarColor: PC.green },
 ];
 
-const pipelineSummaryStats = [
-  { label: "Total Deals", value: "101" },
-  { label: "Pipeline Value", value: "$391,500" },
-  { label: "Win Rate", value: "7.1%" },
-  { label: "Avg Deal Size", value: "$8,000" },
-];
-
 /* ------------------------------------------------------------------ */
 /*  Pipeline Builder — Nodes & Edges                                  */
 /* ------------------------------------------------------------------ */
@@ -524,6 +606,14 @@ const pipelineNodeTypes: NodeTypes = { stage: PipelineStageNode };
 export function PipelinePage() {
   const [nodes, , onNodesChange] = useNodesState(pipelineInitialNodes);
   const [edges, , onEdgesChange] = useEdgesState(pipelineInitialEdges);
+  const { data: stats } = trpc.deals.getStats.useQuery();
+
+  const liveSummaryStats = [
+    { label: "Total Deals", value: stats ? String(stats.totalDeals) : "—" },
+    { label: "Pipeline Value", value: stats ? `$${stats.totalValue.toLocaleString()}` : "—" },
+    { label: "Win Rate", value: stats ? `${(stats.winRate * 100).toFixed(1)}%` : "—" },
+    { label: "Avg Deal Size", value: stats ? `$${Math.round(stats.avgDealSize).toLocaleString()}` : "—" },
+  ];
 
   return (
     <div
@@ -567,7 +657,7 @@ export function PipelinePage() {
 
         {/* Summary stats */}
         <div style={{ display: "flex", gap: 24 }}>
-          {pipelineSummaryStats.map((s) => (
+          {liveSummaryStats.map((s) => (
             <div
               key={s.label}
               style={{ display: "flex", alignItems: "baseline", gap: 6 }}
@@ -689,20 +779,28 @@ export function PipelinePage() {
   );
 }
 
+const STAGE_COLORS: Record<string, string> = {
+  nuevo: "#3b82f6",
+  contactado: "#22d3ee",
+  calificado: "#eab308",
+  propuesta: "#f97316",
+  negociacion: "#a855f7",
+  won: "#22c55e",
+  lost: "#ef4444",
+};
+
+function stageColor(stageId: string): string {
+  return STAGE_COLORS[stageId.toLowerCase()] ?? "#888";
+}
+
 export function DealsPage() {
-  const deals = [
-    { title: "Website Redesign", contact: "Maria Rodriguez", value: "$5,500", stage: "Propuesta", probability: 70 },
-    { title: "Marketing Package", contact: "Ana Jimenez", value: "$3,200", stage: "Negociacion", probability: 85 },
-    { title: "Social Media Plan", contact: "Laura Hernandez", value: "$1,800", stage: "Contactado", probability: 40 },
-    { title: "Email Automation", contact: "Diego Solis", value: "$2,400", stage: "Nuevo", probability: 20 },
-    { title: "CRM Setup", contact: "Carlos Mora", value: "$4,100", stage: "Propuesta", probability: 65 },
-  ];
+  const { data: deals, isLoading } = trpc.deals.list.useQuery({});
 
   return (
     <>
       <SectionHeader
         title="Deals"
-        description="Todos los deals activos"
+        description={`${deals?.length ?? 0} deals activos`}
         action={
           <button className="flex items-center gap-1.5 text-[12px] text-black px-3 py-1.5 rounded font-medium" style={{ backgroundColor: "#3ecf8e" }}>
             <Plus size={14} />
@@ -710,65 +808,181 @@ export function DealsPage() {
           </button>
         }
       />
-      <div className="rounded-lg border border-[#2e2e2e] overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr style={{ backgroundColor: "#1e1e1e" }}>
-              {["Deal", "Contacto", "Valor", "Etapa", "Probabilidad"].map((h) => (
-                <th key={h} className="text-left text-[11px] uppercase tracking-wider text-[#888] font-medium px-4 py-3 border-b border-[#2e2e2e]">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {deals.map((d, i) => (
-              <tr key={i} className="border-b border-[#2e2e2e] last:border-0 hover:bg-[#1e1e1e] transition-colors cursor-pointer">
-                <td className="px-4 py-3 text-[13px] text-[#ededed] font-medium">{d.title}</td>
-                <td className="px-4 py-3 text-[13px] text-[#888]">{d.contact}</td>
-                <td className="px-4 py-3 text-[13px] text-[#3ecf8e] font-medium">{d.value}</td>
-                <td className="px-4 py-3 text-[13px] text-[#ccc]">{d.stage}</td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-12 h-1.5 rounded-full" style={{ backgroundColor: "#2a2a2a" }}>
-                      <div className="h-1.5 rounded-full" style={{ width: `${d.probability}%`, backgroundColor: d.probability >= 70 ? "#3ecf8e" : d.probability >= 40 ? "#f59e0b" : "#ef4444" }} />
-                    </div>
-                    <span className="text-[11px] text-[#888]">{d.probability}%</span>
-                  </div>
-                </td>
-              </tr>
+
+      {isLoading ? (
+        <div className="rounded-lg border border-[#2e2e2e] overflow-hidden">
+          <div className="space-y-0">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex gap-4 px-4 py-3 border-b border-[#2e2e2e] last:border-0" style={{ backgroundColor: "#1e1e1e" }}>
+                <div className="h-4 w-32 rounded bg-[#2a2a2a] animate-pulse" />
+                <div className="h-4 w-28 rounded bg-[#2a2a2a] animate-pulse" />
+                <div className="h-4 w-16 rounded bg-[#2a2a2a] animate-pulse" />
+                <div className="h-4 w-20 rounded bg-[#2a2a2a] animate-pulse" />
+                <div className="h-4 w-14 rounded bg-[#2a2a2a] animate-pulse" />
+              </div>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        </div>
+      ) : !deals || deals.length === 0 ? (
+        <div className="rounded-lg border border-[#2e2e2e] p-12 text-center" style={{ backgroundColor: "#1e1e1e" }}>
+          <Handshake size={32} className="text-[#555] mx-auto mb-3" />
+          <p className="text-[14px] text-[#ededed] font-medium mb-1">No hay deals</p>
+          <p className="text-[12px] text-[#888]">Crea tu primer deal.</p>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-[#2e2e2e] overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr style={{ backgroundColor: "#1e1e1e" }}>
+                {["Deal", "Contacto", "Valor", "Etapa", "Probabilidad", "Creado"].map((h) => (
+                  <th key={h} className="text-left text-[11px] uppercase tracking-wider text-[#888] font-medium px-4 py-3 border-b border-[#2e2e2e]">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {deals.map((d) => {
+                const prob = d.probability ?? 0;
+                const value = d.value ? Number(d.value) : 0;
+                const contactName = d.contact
+                  ? `${d.contact.firstName} ${d.contact.lastName ?? ""}`.trim()
+                  : "—";
+                return (
+                  <tr key={d.id} className="border-b border-[#2e2e2e] last:border-0 hover:bg-[#1e1e1e] transition-colors cursor-pointer">
+                    <td className="px-4 py-3 text-[13px] text-[#ededed] font-medium">{d.title}</td>
+                    <td className="px-4 py-3 text-[13px] text-[#888]">{contactName}</td>
+                    <td className="px-4 py-3 text-[13px] text-[#3ecf8e] font-medium">${value.toLocaleString()}</td>
+                    <td className="px-4 py-3">
+                      <Badge text={d.stageId} color={stageColor(d.stageId)} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-12 h-1.5 rounded-full" style={{ backgroundColor: "#2a2a2a" }}>
+                          <div className="h-1.5 rounded-full" style={{ width: `${prob}%`, backgroundColor: prob >= 70 ? "#3ecf8e" : prob >= 40 ? "#f59e0b" : "#ef4444" }} />
+                        </div>
+                        <span className="text-[11px] text-[#888]">{prob}%</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-[13px] text-[#888]">
+                      {new Date(d.createdAt).toLocaleDateString()}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </>
   );
 }
 
+const ACTIVITY_TYPE_ICONS: Record<string, string> = {
+  email: "mail",
+  call: "phone",
+  note: "note",
+  deal_created: "deal",
+  deal_stage_changed: "move",
+  deal_won: "win",
+  deal_lost: "lost",
+};
+
+function activityTypeColor(type: string): string {
+  if (type.includes("won")) return "#22c55e";
+  if (type.includes("lost")) return "#ef4444";
+  if (type.includes("deal")) return "#a855f7";
+  if (type === "email") return "#3b82f6";
+  if (type === "call") return "#22d3ee";
+  return "#3ecf8e";
+}
+
+function formatRelativeTime(dateStr: string | Date): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return "Ahora";
+  if (diffMins < 60) return `Hace ${diffMins}m`;
+  const diffHrs = Math.floor(diffMins / 60);
+  if (diffHrs < 24) return `Hace ${diffHrs}h`;
+  const diffDays = Math.floor(diffHrs / 24);
+  if (diffDays < 7) return `Hace ${diffDays}d`;
+  return date.toLocaleDateString();
+}
+
 export function ActividadesPage() {
-  const activities = [
-    { type: "email", contact: "Maria Rodriguez", action: "Email enviado: Propuesta comercial", time: "Hace 2h" },
-    { type: "call", contact: "Ana Jimenez", action: "Llamada de seguimiento", time: "Hace 4h" },
-    { type: "note", contact: "Carlos Mora", action: "Nota: Interesado en plan Profesional", time: "Hace 6h" },
-    { type: "deal", contact: "Diego Solis", action: "Deal movido a Propuesta", time: "Hace 8h" },
-    { type: "email", contact: "Laura Hernandez", action: "Email abierto: Newsletter Marzo", time: "Ayer" },
-  ];
+  const [page, setPage] = useState(1);
+  const { data, isLoading } = trpc.activities.list.useQuery({ page, limit: 30 });
+
+  const activities = data?.activities ?? [];
+  const totalPages = data?.totalPages ?? 1;
+  const total = data?.total ?? 0;
 
   return (
     <>
-      <SectionHeader title="Actividades" description="Historial de interacciones recientes" />
-      <div className="space-y-2">
-        {activities.map((a, i) => (
-          <div key={i} className="rounded-lg border border-[#2e2e2e] p-3 flex items-center gap-3" style={{ backgroundColor: "#1e1e1e" }}>
-            <Activity size={14} className="text-[#3ecf8e] flex-shrink-0" />
-            <div className="flex-1">
-              <p className="text-[13px] text-[#ededed]">
-                <span className="font-medium">{a.contact}</span>
-                <span className="text-[#888]"> — {a.action}</span>
-              </p>
+      <SectionHeader title="Actividades" description={`${total} interacciones recientes`} />
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="rounded-lg border border-[#2e2e2e] p-3 flex items-center gap-3" style={{ backgroundColor: "#1e1e1e" }}>
+              <div className="w-5 h-5 rounded bg-[#2a2a2a] animate-pulse flex-shrink-0" />
+              <div className="flex-1 flex gap-3">
+                <div className="h-4 w-48 rounded bg-[#2a2a2a] animate-pulse" />
+                <div className="h-4 w-24 rounded bg-[#2a2a2a] animate-pulse" />
+              </div>
+              <div className="h-4 w-16 rounded bg-[#2a2a2a] animate-pulse" />
             </div>
-            <span className="text-[11px] text-[#666] flex-shrink-0">{a.time}</span>
+          ))}
+        </div>
+      ) : activities.length === 0 ? (
+        <div className="rounded-lg border border-[#2e2e2e] p-12 text-center" style={{ backgroundColor: "#1e1e1e" }}>
+          <Activity size={32} className="text-[#555] mx-auto mb-3" />
+          <p className="text-[14px] text-[#ededed] font-medium mb-1">Sin actividades recientes</p>
+          <p className="text-[12px] text-[#888]">Las interacciones con contactos apareceran aqui.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {activities.map((a) => (
+            <div key={a.id} className="rounded-lg border border-[#2e2e2e] p-3 flex items-center gap-3" style={{ backgroundColor: "#1e1e1e" }}>
+              <Activity size={14} style={{ color: activityTypeColor(a.type) }} className="flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] text-[#ededed] truncate">
+                  <Badge text={a.type.replace(/_/g, " ")} color={activityTypeColor(a.type)} />
+                  {a.subject && <span className="text-[#ccc] ml-2">{a.subject}</span>}
+                </p>
+              </div>
+              <span className="text-[11px] text-[#666] flex-shrink-0">
+                {formatRelativeTime(a.createdAt)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <span className="text-[12px] text-[#888]">
+            Pagina {page} de {totalPages} ({total} actividades)
+          </span>
+          <div className="flex gap-2">
+            <button
+              disabled={page <= 1}
+              onClick={() => setPage(page - 1)}
+              className="text-[12px] px-3 py-1.5 rounded border border-[#333] text-[#ccc] disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Anterior
+            </button>
+            <button
+              disabled={page >= totalPages}
+              onClick={() => setPage(page + 1)}
+              className="text-[12px] px-3 py-1.5 rounded border border-[#333] text-[#ccc] disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Siguiente
+            </button>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
     </>
   );
 }

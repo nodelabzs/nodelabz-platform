@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useMemo } from "react";
+import { trpc } from "@/lib/trpc";
 import {
   ReactFlow,
   Background,
@@ -205,17 +206,159 @@ function Badge({ text, color = "#3ecf8e" }: { text: string; color?: string }) {
 // ============================
 
 export function HomePage() {
+  // ── tRPC queries ──
+  const { data: session } = trpc.auth.getSession.useQuery();
+  const { data: contactsData, isLoading: contactsLoading } = trpc.contacts.list.useQuery({ page: 1, limit: 1 });
+  const { data: dealStats, isLoading: dealsLoading } = trpc.deals.getStats.useQuery();
+  const { data: integrations, isLoading: integrationsLoading } = trpc.integrations.list.useQuery();
+  const { data: healthScore } = trpc.healthScore.getCurrent.useQuery();
+  const { data: usage, isLoading: usageLoading } = trpc.billing.getUsage.useQuery();
+
+  // ── Derived values ──
+  const contactCount = contactsData?.total ?? 0;
+  const integrationCount = integrations?.length ?? 0;
+  const connectedIntegrations = integrations?.filter((i) => i.status === "active") ?? [];
+  const totalPipelineValue = dealStats?.totalValue ?? 0;
+  const planName = session?.tenant?.plan ?? "INICIO";
+  const tenantSlug = session?.tenant?.slug ?? "nodelabz";
+  const tenantName = session?.tenant?.name ?? "NodeLabz";
+
+  // Plan display labels
+  const planLabels: Record<string, string> = {
+    INICIO: "Plan Inicio",
+    CRECIMIENTO: "Plan Crecimiento",
+    PROFESIONAL: "Plan Profesional",
+    AGENCIA: "Plan Agencia",
+  };
+  const planPrices: Record<string, string> = {
+    INICIO: "$39/mes",
+    CRECIMIENTO: "$79/mes",
+    PROFESIONAL: "$149/mes",
+    AGENCIA: "$299/mes",
+  };
+
+  // Default pipeline stage colors (fallback for display)
+  const stageColors: Record<string, string> = {
+    nuevo: "#6366f1",
+    contactado: "#8b5cf6",
+    calificado: "#f59e0b",
+    propuesta: "#3b82f6",
+    negociacion: "#f97316",
+    ganado: "#22c55e",
+    perdido: "#ef4444",
+  };
+
+  // Build pipeline stages from real data or fallback
+  const pipelineStages = useMemo(() => {
+    const defaultStages = [
+      { stage: "Nuevo", color: "#6366f1", count: 0 },
+      { stage: "Contactado", color: "#8b5cf6", count: 0 },
+      { stage: "Calificado", color: "#f59e0b", count: 0 },
+      { stage: "Propuesta", color: "#3b82f6", count: 0 },
+      { stage: "Negociacion", color: "#f97316", count: 0 },
+      { stage: "Ganado", color: "#22c55e", count: 0 },
+      { stage: "Perdido", color: "#ef4444", count: 0 },
+    ];
+
+    if (!dealStats?.dealsByStage || dealStats.dealsByStage.length === 0) {
+      return defaultStages;
+    }
+
+    return dealStats.dealsByStage.map((s) => ({
+      stage: s.stageName,
+      color: stageColors[s.stageName.toLowerCase()] ?? "#888",
+      count: s.count,
+    }));
+  }, [dealStats?.dealsByStage]);
+
+  // Integration catalog with connected status
+  const integrationCatalog = useMemo(() => {
+    const catalog = [
+      { name: "Meta Ads", platform: "meta_ads", desc: "Facebook & Instagram Ads", color: "#1877F2", letter: "M" },
+      { name: "Google Ads", platform: "google_ads", desc: "Search, Display & YouTube", color: "#4285F4", letter: "G" },
+      { name: "Google Analytics 4", platform: "ga4", desc: "Trafico web y conversiones", color: "#E37400", letter: "A" },
+      { name: "TikTok Ads", platform: "tiktok", desc: "Campanas en TikTok", color: "#000", letter: "T" },
+      { name: "Stripe", platform: "stripe", desc: "Pagos y revenue tracking", color: "#635BFF", letter: "S" },
+    ];
+
+    return catalog.map((ch) => {
+      const match = integrations?.find((i) => i.platform === ch.platform);
+      return {
+        ...ch,
+        connected: match?.status === "active",
+        status: match?.status ?? null,
+      };
+    });
+  }, [integrations]);
+
+  // Usage meters
+  const usageMeters = useMemo(() => {
+    return [
+      { label: "Contactos", used: usage?.contacts.used ?? 0, limit: usage?.contacts.limit ?? 500 },
+      { label: "Emails/mes", used: usage?.emails.used ?? 0, limit: usage?.emails.limit ?? 5000 },
+    ];
+  }, [usage]);
+
+  // Whether to show onboarding section
+  const showOnboarding = connectedIntegrations.length === 0 || contactCount === 0;
+
+  // Loading pulse class
+  const pulse = "animate-pulse bg-[#333] rounded text-transparent select-none";
+
+  // Status cards
+  const statusCards = [
+    {
+      icon: <div className="grid grid-cols-3 gap-[3px]">{Array.from({ length: 9 }).map((_, i) => <div key={i} className="w-[5px] h-[5px] rounded-full" style={{ backgroundColor: "#3ecf8e" }} />)}</div>,
+      label: "PLATAFORMA",
+      value: "Operativa",
+      valueColor: "#3ecf8e",
+      loading: false,
+    },
+    {
+      icon: <Users size={18} className={contactCount > 0 ? "text-[#3ecf8e]" : "text-[#888]"} />,
+      label: "CRM",
+      value: `${contactCount} contactos`,
+      valueColor: contactCount > 0 ? "#3ecf8e" : "#888",
+      loading: contactsLoading,
+    },
+    {
+      icon: <Target size={18} className={connectedIntegrations.length > 0 ? "text-[#3ecf8e]" : "text-[#888]"} />,
+      label: "MARKETING",
+      value: connectedIntegrations.length > 0 ? `${connectedIntegrations.length} activas` : "Sin campanas",
+      valueColor: connectedIntegrations.length > 0 ? "#3ecf8e" : "#888",
+      loading: integrationsLoading,
+    },
+    {
+      icon: <Plug size={18} className={integrationCount > 0 ? "text-[#3ecf8e]" : "text-[#888]"} />,
+      label: "INTEGRACIONES",
+      value: `${integrationCount} conectadas`,
+      valueColor: integrationCount > 0 ? "#3ecf8e" : "#888",
+      loading: integrationsLoading,
+    },
+  ];
+
   return (
     <>
       {/* ── Project header ── */}
       <div className="flex items-center gap-3 mb-5">
-        <h1 className="text-[24px] font-semibold text-[#ededed]">NodeLabz</h1>
+        <h1 className="text-[24px] font-semibold text-[#ededed]">{tenantName}</h1>
         <span
           className="text-[10px] font-semibold uppercase tracking-wider px-2 py-[3px] rounded"
           style={{ backgroundColor: "#3ecf8e20", color: "#3ecf8e" }}
         >
           Inicio
         </span>
+        {healthScore && (
+          <span
+            className="text-[10px] font-semibold uppercase tracking-wider px-2 py-[3px] rounded ml-auto"
+            style={{
+              backgroundColor: healthScore.overallScore >= 60 ? "#3ecf8e20" : "#f59e0b20",
+              color: healthScore.overallScore >= 60 ? "#3ecf8e" : "#f59e0b",
+            }}
+          >
+            Health Score: {healthScore.overallScore}/100
+          </span>
+        )}
       </div>
 
       {/* Tenant URL */}
@@ -223,34 +366,13 @@ export function HomePage() {
         <div className="w-8 h-8 rounded-md flex items-center justify-center" style={{ backgroundColor: "#252525" }}>
           <Globe size={14} className="text-[#888]" />
         </div>
-        <span className="text-[13px] text-[#888] font-mono">nodelabz.app/org/nodelabz</span>
+        <span className="text-[13px] text-[#888] font-mono">nodelabz.app/org/{tenantSlug}</span>
       </div>
 
       {/* ── Status row: 4 cards + plan card ── */}
       <div className="flex gap-4 mb-8">
         <div className="flex-1 grid grid-cols-2 gap-3">
-          {[
-            {
-              icon: <div className="grid grid-cols-3 gap-[3px]">{Array.from({ length: 9 }).map((_, i) => <div key={i} className="w-[5px] h-[5px] rounded-full" style={{ backgroundColor: "#3ecf8e" }} />)}</div>,
-              label: "PLATAFORMA",
-              value: "Operativa",
-            },
-            {
-              icon: <Users size={18} className="text-[#888]" />,
-              label: "CRM",
-              value: "0 contactos",
-            },
-            {
-              icon: <Target size={18} className="text-[#888]" />,
-              label: "MARKETING",
-              value: "Sin campanas",
-            },
-            {
-              icon: <Plug size={18} className="text-[#888]" />,
-              label: "INTEGRACIONES",
-              value: "0 conectadas",
-            },
-          ].map((card) => (
+          {statusCards.map((card) => (
             <div
               key={card.label}
               className="flex items-center gap-3.5 rounded-lg border border-[#2e2e2e] px-5 py-4"
@@ -261,7 +383,9 @@ export function HomePage() {
               </div>
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-[#888] font-medium mb-0.5">{card.label}</p>
-                <p className="text-[15px] text-[#ededed]">{card.value}</p>
+                <p className={`text-[15px] ${card.loading ? pulse : ""}`} style={{ color: card.loading ? "transparent" : card.valueColor }}>
+                  {card.loading ? "Cargando..." : card.value}
+                </p>
               </div>
             </div>
           ))}
@@ -277,22 +401,20 @@ export function HomePage() {
               <Layers size={18} className="text-[#3ecf8e]" />
             </div>
             <div>
-              <p className="text-[14px] font-medium text-[#ededed]">Plan Inicio</p>
-              <p className="text-[11px] text-[#888]">$39/mes · Trial 7 dias</p>
+              <p className="text-[14px] font-medium text-[#ededed]">{planLabels[planName] ?? `Plan ${planName}`}</p>
+              <p className="text-[11px] text-[#888]">{planPrices[planName] ?? ""}{session?.tenant?.trialEndsAt ? " · Trial" : ""}</p>
             </div>
           </div>
           <div className="space-y-2.5 flex-1">
-            {[
-              { label: "Contactos", used: 0, limit: 500 },
-              { label: "Emails/mes", used: 0, limit: 5000 },
-              { label: "Consultas IA", used: 0, limit: 1000 },
-            ].map((m) => (
+            {usageMeters.map((m) => (
               <div key={m.label}>
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[11px] text-[#888]">{m.label}</span>
-                  <span className="text-[11px] text-[#ccc]">{m.used.toLocaleString()}/{m.limit.toLocaleString()}</span>
+                  <span className={`text-[11px] text-[#ccc] ${usageLoading ? pulse : ""}`}>
+                    {usageLoading ? "..." : `${m.used.toLocaleString()}/${m.limit === -1 ? "ilimitado" : m.limit.toLocaleString()}`}
+                  </span>
                 </div>
-                <ProgressBar value={m.used} max={m.limit} color={m.used / m.limit > 0.8 ? "#f59e0b" : "#3ecf8e"} />
+                <ProgressBar value={m.used} max={m.limit === -1 ? 1 : m.limit} color={m.limit !== -1 && m.used / m.limit > 0.8 ? "#f59e0b" : "#3ecf8e"} />
               </div>
             ))}
           </div>
@@ -305,114 +427,106 @@ export function HomePage() {
       {/* ── Divider ── */}
       <div className="h-px mb-8" style={{ backgroundColor: "#2e2e2e" }} />
 
-      {/* ── Getting started ── */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "#3ecf8e" }} />
-            <h2 className="text-[16px] font-semibold text-[#ededed]">Primeros pasos</h2>
-          </div>
-          <button className="text-[12px] text-[#888] hover:text-[#ccc] transition-colors">Ocultar</button>
-        </div>
-
-        <div className="grid grid-cols-4 gap-4">
-          {/* Description */}
-          <div
-            className="rounded-lg border border-[#2e2e2e] p-6 flex flex-col justify-center"
-            style={{ backgroundColor: "#1e1e1e" }}
-          >
-            <p className="text-[10px] uppercase tracking-wider text-[#888] font-medium mb-3">CONFIGURA TU NEGOCIO</p>
-            <p className="text-[13px] text-[#ccc] leading-relaxed">
-              Conecta tus canales de marketing, importa tu base de clientes, y deja que la IA analice tus datos para optimizar resultados.
-            </p>
+      {/* ── Getting started (conditional) ── */}
+      {showOnboarding && (
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "#3ecf8e" }} />
+              <h2 className="text-[16px] font-semibold text-[#ededed]">Primeros pasos</h2>
+            </div>
+            <button className="text-[12px] text-[#888] hover:text-[#ccc] transition-colors">Ocultar</button>
           </div>
 
-          {/* 1: Connect ad platforms */}
-          <button
-            className="rounded-lg border border-[#2e2e2e] p-6 text-left hover:border-[#3ecf8e]/40 transition-colors group"
-            style={{ backgroundColor: "#1e1e1e" }}
-          >
-            <div className="w-10 h-10 rounded-md flex items-center justify-center mb-4" style={{ backgroundColor: "#252525" }}>
-              <Plug size={18} className="text-[#888] group-hover:text-[#3ecf8e] transition-colors" />
+          <div className="grid grid-cols-4 gap-4">
+            {/* Description */}
+            <div
+              className="rounded-lg border border-[#2e2e2e] p-6 flex flex-col justify-center"
+              style={{ backgroundColor: "#1e1e1e" }}
+            >
+              <p className="text-[10px] uppercase tracking-wider text-[#888] font-medium mb-3">CONFIGURA TU NEGOCIO</p>
+              <p className="text-[13px] text-[#ccc] leading-relaxed">
+                Conecta tus canales de marketing, importa tu base de clientes, y deja que la IA analice tus datos para optimizar resultados.
+              </p>
             </div>
-            <p className="text-[14px] font-medium text-[#ededed] mb-1">Conectar canales</p>
-            <p className="text-[12px] text-[#888] leading-relaxed">
-              Meta Ads, Google Ads, TikTok, GA4, Stripe
-            </p>
-          </button>
 
-          {/* 2: Import contacts */}
-          <button
-            className="rounded-lg border border-[#2e2e2e] p-6 text-left hover:border-[#3ecf8e]/40 transition-colors group"
-            style={{ backgroundColor: "#1e1e1e" }}
-          >
-            <div className="w-10 h-10 rounded-md flex items-center justify-center mb-4" style={{ backgroundColor: "#252525" }}>
-              <Users size={18} className="text-[#888] group-hover:text-[#3ecf8e] transition-colors" />
-            </div>
-            <p className="text-[14px] font-medium text-[#ededed] mb-1">Importar clientes</p>
-            <p className="text-[12px] text-[#888] leading-relaxed">
-              CSV, Excel, o sync desde tus plataformas
-            </p>
-          </button>
+            {/* 1: Connect ad platforms */}
+            <button
+              className="rounded-lg border border-[#2e2e2e] p-6 text-left hover:border-[#3ecf8e]/40 transition-colors group"
+              style={{ backgroundColor: "#1e1e1e" }}
+            >
+              <div className="w-10 h-10 rounded-md flex items-center justify-center mb-4" style={{ backgroundColor: "#252525" }}>
+                <Plug size={18} className="text-[#888] group-hover:text-[#3ecf8e] transition-colors" />
+              </div>
+              <p className="text-[14px] font-medium text-[#ededed] mb-1">Conectar canales</p>
+              <p className="text-[12px] text-[#888] leading-relaxed">
+                Meta Ads, Google Ads, TikTok, GA4, Stripe
+              </p>
+            </button>
 
-          {/* 3: Ask AI */}
-          <button
-            className="rounded-lg border border-[#2e2e2e] p-6 text-left hover:border-[#3ecf8e]/40 transition-colors group"
-            style={{ backgroundColor: "#1e1e1e" }}
-          >
-            <div className="w-10 h-10 rounded-md flex items-center justify-center mb-4" style={{ backgroundColor: "#252525" }}>
-              <Zap size={18} className="text-[#888] group-hover:text-[#f59e0b] transition-colors" />
-            </div>
-            <p className="text-[14px] font-medium text-[#ededed] mb-1">Preguntar a la IA</p>
-            <p className="text-[12px] text-[#888] leading-relaxed">
-              Analisis, reportes y automatizaciones con chat
-            </p>
-          </button>
+            {/* 2: Import contacts */}
+            <button
+              className="rounded-lg border border-[#2e2e2e] p-6 text-left hover:border-[#3ecf8e]/40 transition-colors group"
+              style={{ backgroundColor: "#1e1e1e" }}
+            >
+              <div className="w-10 h-10 rounded-md flex items-center justify-center mb-4" style={{ backgroundColor: "#252525" }}>
+                <Users size={18} className="text-[#888] group-hover:text-[#3ecf8e] transition-colors" />
+              </div>
+              <p className="text-[14px] font-medium text-[#ededed] mb-1">Importar clientes</p>
+              <p className="text-[12px] text-[#888] leading-relaxed">
+                CSV, Excel, o sync desde tus plataformas
+              </p>
+            </button>
+
+            {/* 3: Ask AI */}
+            <button
+              className="rounded-lg border border-[#2e2e2e] p-6 text-left hover:border-[#3ecf8e]/40 transition-colors group"
+              style={{ backgroundColor: "#1e1e1e" }}
+            >
+              <div className="w-10 h-10 rounded-md flex items-center justify-center mb-4" style={{ backgroundColor: "#252525" }}>
+                <Zap size={18} className="text-[#888] group-hover:text-[#f59e0b] transition-colors" />
+              </div>
+              <p className="text-[14px] font-medium text-[#ededed] mb-1">Preguntar a la IA</p>
+              <p className="text-[12px] text-[#888] leading-relaxed">
+                Analisis, reportes y automatizaciones con chat
+              </p>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ── Divider ── */}
-      <div className="h-px mb-8" style={{ backgroundColor: "#2e2e2e" }} />
+      {showOnboarding && <div className="h-px mb-8" style={{ backgroundColor: "#2e2e2e" }} />}
 
       {/* ── 3-column overview ── */}
       <div className="grid grid-cols-3 gap-5">
-        {/* Pipeline — the 7 default stages */}
+        {/* Pipeline — real data or fallback stages */}
         <div>
           <h3 className="text-[13px] font-medium text-[#ededed] mb-3">Pipeline de ventas</h3>
           <div className="rounded-lg border border-[#2e2e2e] p-4 space-y-3" style={{ backgroundColor: "#1e1e1e" }}>
-            {[
-              { stage: "Nuevo", color: "#6366f1" },
-              { stage: "Contactado", color: "#8b5cf6" },
-              { stage: "Calificado", color: "#f59e0b" },
-              { stage: "Propuesta", color: "#3b82f6" },
-              { stage: "Negociacion", color: "#f97316" },
-              { stage: "Ganado", color: "#22c55e" },
-              { stage: "Perdido", color: "#ef4444" },
-            ].map((s) => (
+            {pipelineStages.map((s) => (
               <div key={s.stage} className="flex items-center gap-2.5">
                 <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
                 <span className="text-[12px] text-[#ccc] flex-1">{s.stage}</span>
-                <span className="text-[11px] text-[#555]">0 deals</span>
+                <span className={`text-[11px] ${s.count > 0 ? "text-[#ccc]" : "text-[#555]"} ${dealsLoading ? pulse : ""}`}>
+                  {dealsLoading ? "..." : `${s.count} deals`}
+                </span>
               </div>
             ))}
             <div className="pt-2 border-t border-[#2e2e2e] flex items-center justify-between">
               <span className="text-[11px] text-[#888]">Total en pipeline</span>
-              <span className="text-[13px] font-medium text-[#ededed]">$0</span>
+              <span className={`text-[13px] font-medium text-[#ededed] ${dealsLoading ? pulse : ""}`}>
+                {dealsLoading ? "..." : `$${totalPipelineValue.toLocaleString()}`}
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Integraciones disponibles */}
+        {/* Integraciones — real status from API */}
         <div>
           <h3 className="text-[13px] font-medium text-[#ededed] mb-3">Integraciones</h3>
           <div className="rounded-lg border border-[#2e2e2e] divide-y divide-[#2e2e2e]" style={{ backgroundColor: "#1e1e1e" }}>
-            {[
-              { name: "Meta Ads", desc: "Facebook & Instagram Ads", color: "#1877F2", letter: "M" },
-              { name: "Google Ads", desc: "Search, Display & YouTube", color: "#4285F4", letter: "G" },
-              { name: "Google Analytics 4", desc: "Trafico web y conversiones", color: "#E37400", letter: "A" },
-              { name: "TikTok Ads", desc: "Campanas en TikTok", color: "#000", letter: "T" },
-              { name: "Stripe", desc: "Pagos y revenue tracking", color: "#635BFF", letter: "S" },
-            ].map((ch) => (
+            {integrationCatalog.map((ch) => (
               <div key={ch.name} className="px-4 py-3 flex items-center gap-3">
                 <div
                   className="w-7 h-7 rounded-md flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0"
@@ -424,9 +538,20 @@ export function HomePage() {
                   <p className="text-[12px] text-[#ededed]">{ch.name}</p>
                   <p className="text-[11px] text-[#888] truncate">{ch.desc}</p>
                 </div>
-                <button className="text-[10px] px-2 py-0.5 rounded-full border border-[#333] text-[#888] hover:text-[#ccc] hover:border-[#555] transition-colors">
-                  Conectar
-                </button>
+                {integrationsLoading ? (
+                  <span className={`text-[10px] px-2 py-0.5 ${pulse}`}>...</span>
+                ) : ch.connected ? (
+                  <span
+                    className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                    style={{ backgroundColor: "#3ecf8e20", color: "#3ecf8e" }}
+                  >
+                    Conectada
+                  </span>
+                ) : (
+                  <button className="text-[10px] px-2 py-0.5 rounded-full border border-[#333] text-[#888] hover:text-[#ccc] hover:border-[#555] transition-colors">
+                    Conectar
+                  </button>
+                )}
               </div>
             ))}
           </div>

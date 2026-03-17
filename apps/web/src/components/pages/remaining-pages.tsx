@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { trpc } from "@/lib/trpc";
 import {
   ResponsiveContainer,
   BarChart,
@@ -1211,39 +1212,102 @@ export function ExportarPage({ type }: { type: string }) {
 // INTEGRATIONS
 // ============================
 
-export function IntegrationPage({ platform, connected }: { platform: string; connected?: boolean }) {
+export function IntegrationPage({ platform }: { platform: string; connected?: boolean }) {
+  const { data: integrations, isLoading } = trpc.integrations.list.useQuery();
+  const utils = trpc.useUtils();
+  const integration = integrations?.find((i) => i.platform.toLowerCase().includes(platform.toLowerCase()));
+
+  const disconnectMutation = trpc.integrations.disconnect.useMutation({
+    onSuccess: () => { utils.integrations.list.invalidate(); },
+  });
+
+  const syncMutation = trpc.integrations.syncNow.useMutation({
+    onSuccess: () => { utils.integrations.list.invalidate(); },
+  });
+
+  const startOAuthMutation = trpc.integrations.startOAuth.useMutation({
+    onSuccess: (data) => { window.location.href = data.authUrl; },
+  });
+
+  const providerMap: Record<string, "meta_ads" | "google_ads" | "ga4" | "tiktok" | "shopify"> = {
+    meta: "meta_ads",
+    facebook: "meta_ads",
+    google: "google_ads",
+    ga4: "ga4",
+    tiktok: "tiktok",
+    shopify: "shopify",
+  };
+
+  const handleConnect = () => {
+    const key = Object.keys(providerMap).find((k) => platform.toLowerCase().includes(k));
+    if (key) {
+      startOAuthMutation.mutate({ provider: providerMap[key]! });
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <>
+        <SectionHeader title={platform} description={`Cargando ${platform}...`} />
+        <div className="h-40 rounded-lg border border-[#2e2e2e] animate-pulse" style={{ backgroundColor: "#1e1e1e" }} />
+      </>
+    );
+  }
+
   return (
     <>
-      <SectionHeader title={platform} description={connected ? `${platform} conectado a NodeLabz` : `Conectar ${platform}`} />
+      <SectionHeader title={platform} description={integration ? `${platform} conectado a NodeLabz` : `Conectar ${platform}`} />
       <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
-        {connected ? (
+        {integration ? (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <CheckCircle size={14} className="text-[#3ecf8e]" />
-                <span className="text-[13px] text-[#ededed]">Conectado</span>
+                <span className="text-[13px] text-[#ededed]">Conectada</span>
+                <Badge text="Conectada" color="#3ecf8e" />
               </div>
-              <button className="text-[11px] px-3 py-1 rounded border border-[#333] text-[#888]">Desconectar</button>
+              <button
+                onClick={() => disconnectMutation.mutate({ integrationId: integration.id })}
+                disabled={disconnectMutation.isPending}
+                className="text-[11px] px-3 py-1 rounded border border-[#333] text-[#888] hover:text-red-400 hover:border-red-400/40 transition-colors disabled:opacity-50"
+              >
+                {disconnectMutation.isPending ? "Desconectando..." : "Desconectar"}
+              </button>
             </div>
             <div className="flex items-center justify-between py-2 px-3 rounded" style={{ backgroundColor: "#252525" }}>
               <span className="text-[12px] text-[#888]">Ultima sincronizacion</span>
-              <span className="text-[12px] text-[#ededed]">Hace 15 minutos</span>
+              <span className="text-[12px] text-[#ededed]">
+                {integration.lastSyncAt ? new Date(integration.lastSyncAt).toLocaleString() : "Nunca"}
+              </span>
             </div>
-            <div className="flex items-center justify-between py-2 px-3 rounded" style={{ backgroundColor: "#252525" }}>
-              <span className="text-[12px] text-[#888]">Datos importados</span>
-              <span className="text-[12px] text-[#ededed]">2,450 registros</span>
-            </div>
-            <button className="flex items-center gap-1.5 text-[12px] text-[#ccc] px-3 py-1.5 rounded border border-[#333]">
-              <RefreshCw size={12} />
-              Sincronizar ahora
+            {integration.accountId && (
+              <div className="flex items-center justify-between py-2 px-3 rounded" style={{ backgroundColor: "#252525" }}>
+                <span className="text-[12px] text-[#888]">Account ID</span>
+                <span className="text-[12px] text-[#ededed]">{integration.accountId}</span>
+              </div>
+            )}
+            <button
+              onClick={() => syncMutation.mutate({ integrationId: integration.id })}
+              disabled={syncMutation.isPending}
+              className="flex items-center gap-1.5 text-[12px] text-[#ccc] px-3 py-1.5 rounded border border-[#333] disabled:opacity-50"
+            >
+              <RefreshCw size={12} className={syncMutation.isPending ? "animate-spin" : ""} />
+              {syncMutation.isPending ? "Sincronizando..." : "Sincronizar ahora"}
             </button>
           </div>
         ) : (
           <div className="text-center py-8">
             <Plug size={32} className="text-[#555] mx-auto mb-3" />
-            <p className="text-[13px] text-[#888] mb-4">Conecta {platform} para importar datos automaticamente</p>
-            <button className="text-[12px] text-black px-4 py-2 rounded font-medium" style={{ backgroundColor: "#3ecf8e" }}>
-              Conectar {platform}
+            <p className="text-[13px] text-[#888] mb-1">No conectada</p>
+            <Badge text="No conectada" color="#888" />
+            <p className="text-[13px] text-[#888] mb-4 mt-3">Conecta {platform} para importar datos automaticamente</p>
+            <button
+              onClick={handleConnect}
+              disabled={startOAuthMutation.isPending}
+              className="text-[12px] text-black px-4 py-2 rounded font-medium disabled:opacity-50"
+              style={{ backgroundColor: "#3ecf8e" }}
+            >
+              {startOAuthMutation.isPending ? "Redirigiendo..." : `Conectar ${platform}`}
             </button>
           </div>
         )}
@@ -1253,6 +1317,11 @@ export function IntegrationPage({ platform, connected }: { platform: string; con
 }
 
 export function OAuthTokensPage() {
+  const { data: integrations, isLoading } = trpc.integrations.list.useQuery();
+
+  const statusColors: Record<string, string> = { active: "#3ecf8e", error: "#ef4444", expired: "#f59e0b" };
+  const statusLabels: Record<string, string> = { active: "Activo", error: "Error", expired: "Expirado" };
+
   return (
     <>
       <SectionHeader title="OAuth Tokens" description="Gestion de tokens de autenticacion" />
@@ -1261,44 +1330,77 @@ export function OAuthTokensPage() {
           <ShieldCheck size={14} className="text-[#3ecf8e]" />
           <span className="text-[13px] font-medium text-[#ededed]">Tokens activos</span>
         </div>
-        <div className="space-y-2">
-          {["Meta Ads", "Google Ads"].map((p) => (
-            <div key={p} className="flex items-center justify-between py-2 px-3 rounded" style={{ backgroundColor: "#252525" }}>
-              <span className="text-[12px] text-[#ccc]">{p}</span>
-              <div className="flex items-center gap-2">
-                <Badge text="Activo" color="#3ecf8e" />
-                <span className="text-[11px] text-[#888]">Expira en 58 dias</span>
+        {isLoading ? (
+          <div className="space-y-2">
+            {[1, 2].map((i) => (
+              <div key={i} className="h-10 rounded animate-pulse" style={{ backgroundColor: "#252525" }} />
+            ))}
+          </div>
+        ) : !integrations || integrations.length === 0 ? (
+          <p className="text-[13px] text-[#888] text-center py-4">No hay integraciones conectadas</p>
+        ) : (
+          <div className="space-y-2">
+            {integrations.map((integration) => (
+              <div key={integration.id} className="flex items-center justify-between py-2 px-3 rounded" style={{ backgroundColor: "#252525" }}>
+                <div>
+                  <span className="text-[12px] text-[#ccc]">{integration.platform}</span>
+                  {integration.accountId && (
+                    <span className="text-[11px] text-[#888] ml-2">({integration.accountId})</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge text={statusLabels[integration.status] ?? integration.status} color={statusColors[integration.status] ?? "#888"} />
+                  <span className="text-[11px] text-[#888]">
+                    {integration.lastSyncAt ? `Sync: ${new Date(integration.lastSyncAt).toLocaleString()}` : "Sin sync"}
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </>
   );
 }
 
 export function SyncStatusPage() {
+  const { data: integrations, isLoading } = trpc.integrations.list.useQuery();
+
+  const statusColors: Record<string, string> = { active: "#3ecf8e", error: "#ef4444", expired: "#f59e0b" };
+  const statusLabels: Record<string, string> = { active: "Activo", error: "Error", expired: "Expirado" };
+
   return (
     <>
       <SectionHeader title="Sync Status" description="Estado de sincronizacion de datos" />
-      <div className="space-y-2">
-        {[
-          { platform: "Meta Ads", status: "synced", lastSync: "Hace 15m", records: "2,450" },
-          { platform: "Google Ads", status: "syncing", lastSync: "Ahora", records: "1,890" },
-          { platform: "GA4", status: "error", lastSync: "Hace 2h", records: "Error" },
-        ].map((s) => (
-          <div key={s.platform} className="rounded-lg border border-[#2e2e2e] p-3 flex items-center justify-between" style={{ backgroundColor: "#1e1e1e" }}>
-            <div>
-              <p className="text-[13px] font-medium text-[#ededed]">{s.platform}</p>
-              <p className="text-[11px] text-[#888]">Ultima sync: {s.lastSync} · {s.records} registros</p>
+      {isLoading ? (
+        <div className="space-y-2">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-16 rounded-lg border border-[#2e2e2e] animate-pulse" style={{ backgroundColor: "#1e1e1e" }} />
+          ))}
+        </div>
+      ) : !integrations || integrations.length === 0 ? (
+        <div className="rounded-lg border border-[#2e2e2e] p-8 text-center" style={{ backgroundColor: "#1e1e1e" }}>
+          <RefreshCw size={32} className="text-[#555] mx-auto mb-2" />
+          <p className="text-[13px] text-[#888]">No hay integraciones conectadas para sincronizar</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {integrations.map((integration) => (
+            <div key={integration.id} className="rounded-lg border border-[#2e2e2e] p-3 flex items-center justify-between" style={{ backgroundColor: "#1e1e1e" }}>
+              <div>
+                <p className="text-[13px] font-medium text-[#ededed]">{integration.platform}</p>
+                <p className="text-[11px] text-[#888]">
+                  Ultima sync: {integration.lastSyncAt ? new Date(integration.lastSyncAt).toLocaleString() : "Nunca"}
+                </p>
+              </div>
+              <Badge
+                text={statusLabels[integration.status] ?? integration.status}
+                color={statusColors[integration.status] ?? "#888"}
+              />
             </div>
-            <Badge
-              text={s.status === "synced" ? "Sincronizado" : s.status === "syncing" ? "Sincronizando..." : "Error"}
-              color={s.status === "synced" ? "#3ecf8e" : s.status === "syncing" ? "#f59e0b" : "#ef4444"}
-            />
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </>
   );
 }
@@ -1335,10 +1437,9 @@ export function PerfilPage() {
 }
 
 export function EquipoPage() {
-  const members = [
-    { name: "Federico Tafur", email: "federico@nodelabz.com", role: "Admin" },
-    { name: "Maria Lopez", email: "maria@nodelabz.com", role: "Editor" },
-  ];
+  const { data: members, isLoading } = trpc.team.listMembers.useQuery();
+
+  const roleColors: Record<string, string> = { Admin: "#f59e0b", Manager: "#6366f1", Editor: "#3ecf8e", Viewer: "#888" };
 
   return (
     <>
@@ -1347,22 +1448,36 @@ export function EquipoPage() {
         description="Miembros de tu organizacion"
         action={<button className="flex items-center gap-1.5 text-[12px] text-black px-3 py-1.5 rounded font-medium" style={{ backgroundColor: "#3ecf8e" }}><Plus size={14} />Invitar</button>}
       />
-      <div className="space-y-2">
-        {members.map((m) => (
-          <div key={m.email} className="rounded-lg border border-[#2e2e2e] p-4 flex items-center justify-between" style={{ backgroundColor: "#1e1e1e" }}>
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold text-[#ededed]" style={{ backgroundColor: "#2a2a2a" }}>
-                {m.name[0]}
+      {isLoading ? (
+        <div className="space-y-2">
+          {[1, 2].map((i) => (
+            <div key={i} className="h-16 rounded-lg border border-[#2e2e2e] animate-pulse" style={{ backgroundColor: "#1e1e1e" }} />
+          ))}
+        </div>
+      ) : !members || members.length === 0 ? (
+        <div className="rounded-lg border border-[#2e2e2e] p-8 text-center" style={{ backgroundColor: "#1e1e1e" }}>
+          <Users size={32} className="text-[#555] mx-auto mb-2" />
+          <p className="text-[13px] text-[#888]">No hay miembros en tu equipo</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {members.map((m) => (
+            <div key={m.id} className="rounded-lg border border-[#2e2e2e] p-4 flex items-center justify-between" style={{ backgroundColor: "#1e1e1e" }}>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold text-[#ededed]" style={{ backgroundColor: "#2a2a2a" }}>
+                  {(m.name ?? m.email)?.[0]?.toUpperCase() ?? "?"}
+                </div>
+                <div>
+                  <p className="text-[13px] font-medium text-[#ededed]">{m.name ?? "Sin nombre"}</p>
+                  <p className="text-[11px] text-[#888]">{m.email}</p>
+                  <p className="text-[10px] text-[#666]">Desde {new Date(m.createdAt).toLocaleDateString()}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-[13px] font-medium text-[#ededed]">{m.name}</p>
-                <p className="text-[11px] text-[#888]">{m.email}</p>
-              </div>
+              <Badge text={m.role} color={roleColors[m.role] ?? "#888"} />
             </div>
-            <Badge text={m.role} color={m.role === "Admin" ? "#f59e0b" : "#6366f1"} />
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </>
   );
 }
@@ -1389,34 +1504,66 @@ export function RolesPermisosPage() {
 }
 
 export function PlanActualPage() {
+  const { data: subscription, isLoading: subLoading } = trpc.billing.getSubscription.useQuery();
+  const { data: usage, isLoading: usageLoading } = trpc.billing.getUsage.useQuery();
+  const checkoutMutation = trpc.billing.createCheckout.useMutation({
+    onSuccess: (data) => { window.location.href = data.url; },
+  });
+
+  const isLoading = subLoading || usageLoading;
+
+  const statusColors: Record<string, string> = { active: "#3ecf8e", trialing: "#6366f1", no_subscription: "#888", error: "#ef4444", canceled: "#ef4444" };
+  const statusLabels: Record<string, string> = { active: "Activo", trialing: "Prueba", no_subscription: "Sin suscripcion", error: "Error", canceled: "Cancelado" };
+
   return (
     <>
       <SectionHeader title="Plan Actual" description="Tu suscripcion actual" />
-      <div className="rounded-lg border border-[#3ecf8e]/30 p-6" style={{ backgroundColor: "#1e2a22" }}>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-[18px] font-semibold text-[#ededed]">Plan Inicio</h3>
-            <p className="text-[13px] text-[#888]">$39/mes</p>
-          </div>
-          <Badge text="Activo" color="#3ecf8e" />
-        </div>
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          {[
-            { label: "Contactos", value: "0/500" },
-            { label: "Emails/mes", value: "0/5,000" },
-            { label: "AI Calls", value: "0/1,000" },
-            { label: "Usuarios", value: "2/3" },
-          ].map((m) => (
-            <div key={m.label} className="py-2 px-3 rounded" style={{ backgroundColor: "#252525" }}>
-              <p className="text-[11px] text-[#888]">{m.label}</p>
-              <p className="text-[13px] text-[#ededed]">{m.value}</p>
+      {isLoading ? (
+        <div className="h-48 rounded-lg border border-[#2e2e2e] animate-pulse" style={{ backgroundColor: "#1e1e1e" }} />
+      ) : (
+        <div className="rounded-lg border border-[#3ecf8e]/30 p-6" style={{ backgroundColor: "#1e2a22" }}>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-[18px] font-semibold text-[#ededed]">Plan {subscription?.plan ?? "Inicio"}</h3>
+              {subscription?.currentPeriodEnd && (
+                <p className="text-[13px] text-[#888]">Renueva el {new Date(subscription.currentPeriodEnd).toLocaleDateString()}</p>
+              )}
             </div>
-          ))}
+            <Badge
+              text={statusLabels[subscription?.status ?? "no_subscription"] ?? (subscription?.status ?? "Sin plan")}
+              color={statusColors[subscription?.status ?? "no_subscription"] ?? "#888"}
+            />
+          </div>
+          {usage && (
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="py-2 px-3 rounded" style={{ backgroundColor: "#252525" }}>
+                <p className="text-[11px] text-[#888]">Contactos</p>
+                <p className="text-[13px] text-[#ededed]">{usage.contacts.used.toLocaleString()}/{usage.contacts.limit.toLocaleString()}</p>
+              </div>
+              <div className="py-2 px-3 rounded" style={{ backgroundColor: "#252525" }}>
+                <p className="text-[11px] text-[#888]">Emails/mes</p>
+                <p className="text-[13px] text-[#ededed]">{usage.emails.used.toLocaleString()}/{usage.emails.limit.toLocaleString()}</p>
+              </div>
+              <div className="py-2 px-3 rounded" style={{ backgroundColor: "#252525" }}>
+                <p className="text-[11px] text-[#888]">AI Tier</p>
+                <p className="text-[13px] text-[#ededed]">{usage.features.aiTier}</p>
+              </div>
+              <div className="py-2 px-3 rounded" style={{ backgroundColor: "#252525" }}>
+                <p className="text-[11px] text-[#888]">Media Generation</p>
+                <p className="text-[13px] text-[#ededed]">{usage.features.mediaGeneration ? "Si" : "No"}</p>
+              </div>
+            </div>
+          )}
+          <button
+            onClick={() => checkoutMutation.mutate({ plan: "CRECIMIENTO" })}
+            disabled={checkoutMutation.isPending}
+            className="text-[12px] text-black px-4 py-2 rounded font-medium w-full text-center disabled:opacity-50"
+            style={{ backgroundColor: "#3ecf8e" }}
+          >
+            {checkoutMutation.isPending ? "Redirigiendo..." : "Upgrade a Crecimiento"}
+          </button>
         </div>
-        <button className="text-[12px] text-black px-4 py-2 rounded font-medium w-full text-center" style={{ backgroundColor: "#3ecf8e" }}>
-          Upgrade a Crecimiento
-        </button>
-      </div>
+      )}
     </>
   );
 }

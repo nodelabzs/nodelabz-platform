@@ -206,6 +206,182 @@ export const contactsRouter = router({
       return { imported: toCreate.length, skipped };
     }),
 
+  parseCSV: tenantProcedure
+    .input(
+      z.object({
+        csvContent: z.string().min(1),
+        fieldMapping: z.record(z.string(), z.string()).optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const { csvContent, fieldMapping } = input;
+
+      // Parse CSV: handle commas, semicolons, and quoted fields
+      const lines = csvContent.split(/\r?\n/).filter((l) => l.trim().length > 0);
+      if (lines.length < 2) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "CSV must have at least a header row and one data row",
+        });
+      }
+
+      const parseLine = (line: string): string[] => {
+        const result: string[] = [];
+        let current = "";
+        let inQuotes = false;
+        const delimiter = line.includes(";") && !line.includes(",") ? ";" : ",";
+
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          if (char === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+              current += '"';
+              i++;
+            } else {
+              inQuotes = !inQuotes;
+            }
+          } else if (char === delimiter && !inQuotes) {
+            result.push(current.trim());
+            current = "";
+          } else {
+            current += char;
+          }
+        }
+        result.push(current.trim());
+        return result;
+      };
+
+      const columns = parseLine(lines[0]!);
+      const rows = lines.slice(1).map((line) => {
+        const values = parseLine(line);
+        const row: Record<string, string> = {};
+        columns.forEach((col, idx) => {
+          row[col] = values[idx] || "";
+        });
+        return row;
+      });
+
+      // Apply field mapping to preview if provided
+      let preview = rows.slice(0, 5);
+      if (fieldMapping) {
+        preview = preview.map((row) => {
+          const mapped: Record<string, string> = {};
+          for (const [csvCol, fieldName] of Object.entries(fieldMapping)) {
+            if (row[csvCol] !== undefined) {
+              mapped[fieldName] = row[csvCol];
+            }
+          }
+          return mapped;
+        });
+      }
+
+      return { preview, totalRows: rows.length, columns };
+    }),
+
+  importMapped: tenantProcedure
+    .input(
+      z.object({
+        rows: z.array(z.record(z.string(), z.string())),
+        fieldMapping: z.record(z.string(), z.string()),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const tenantId = ctx.effectiveTenantId;
+      const { rows, fieldMapping } = input;
+
+      const validContactFields = [
+        "firstName",
+        "lastName",
+        "email",
+        "phone",
+        "company",
+        "source",
+      ];
+
+      // Map rows using fieldMapping
+      const mappedContacts: Array<{
+        firstName: string;
+        lastName?: string;
+        email?: string;
+        phone?: string;
+        company?: string;
+        source?: string;
+        tags: string[];
+      }> = [];
+
+      const errors: Array<{ row: number; error: string }> = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i]!;
+        const contact: Record<string, string> = {};
+
+        for (const [csvCol, fieldName] of Object.entries(fieldMapping)) {
+          if (validContactFields.includes(fieldName) && row[csvCol]) {
+            contact[fieldName] = row[csvCol]!;
+          }
+        }
+
+        if (!contact.firstName) {
+          errors.push({ row: i + 1, error: "Missing firstName" });
+          continue;
+        }
+
+        mappedContacts.push({
+          firstName: contact.firstName,
+          lastName: contact.lastName,
+          email: contact.email,
+          phone: contact.phone,
+          company: contact.company,
+          source: contact.source || "csv_import",
+          tags: ["csv-import"],
+        });
+      }
+
+      // Deduplicate by email within the batch
+      const incomingEmails = mappedContacts
+        .map((c) => c.email)
+        .filter((e): e is string => !!e);
+
+      const existingContacts =
+        incomingEmails.length > 0
+          ? await prisma.contact.findMany({
+              where: { tenantId, email: { in: incomingEmails } },
+              select: { email: true },
+            })
+          : [];
+
+      const existingEmailSet = new Set(
+        existingContacts.map((c) => c.email).filter(Boolean)
+      );
+
+      const toCreate = mappedContacts.filter(
+        (c) => !c.email || !existingEmailSet.has(c.email)
+      );
+
+      const skipped = mappedContacts.length - toCreate.length;
+
+      if (toCreate.length > 0) {
+        await prisma.contact.createMany({
+          data: toCreate.map((c) => ({
+            tenantId,
+            firstName: c.firstName,
+            lastName: c.lastName,
+            email: c.email,
+            phone: c.phone,
+            company: c.company,
+            source: c.source,
+            tags: c.tags,
+          })),
+        });
+      }
+
+      return {
+        imported: toCreate.length,
+        skipped,
+        errors,
+      };
+    }),
+
   updateScore: tenantProcedure
     .input(
       z.object({

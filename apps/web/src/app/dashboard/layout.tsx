@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { DashboardTransition } from "./dashboard-transition";
 
 export default async function DashboardLayout({
   children,
@@ -13,5 +14,5 @@ export default async function DashboardLayout({
     redirect("/auth/login");
   }
 
-  return <>{children}</>;
+  return <DashboardTransition>{children}</DashboardTransition>;
 }

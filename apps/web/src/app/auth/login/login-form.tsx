@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { User, Lock, ArrowRight, Github } from "lucide-react";
 import Link from "next/link";
 
 export function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const reason = searchParams.get("reason");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +36,7 @@ export function LoginForm() {
       return;
     }
 
-    router.push("/dashboard/org");
+    router.push("/auth/loading");
     router.refresh();
   };
 
@@ -54,6 +56,12 @@ export function LoginForm() {
           Inicia sesion para continuar
         </p>
       </div>
+
+      {reason === "inactivity" && (
+        <div className="rounded-lg bg-yellow-500/20 border border-yellow-500/30 p-3 text-sm text-yellow-200">
+          Tu sesion expiro por inactividad. Inicia sesion de nuevo.
+        </div>
+      )}
 
       {error && (
         <div className="rounded-lg bg-red-500/20 border border-red-500/30 p-3 text-sm text-red-200">

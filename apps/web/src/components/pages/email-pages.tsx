@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { trpc } from "@/lib/trpc";
 import {
   DndContext,
   DragOverlay,
@@ -631,15 +632,22 @@ function StatCard({ label, value, icon }: { label: string; value: string; icon: 
 }
 
 export function EmailCampanasPage() {
-  const campaigns = [
-    { name: "Newsletter Marzo", status: "sent", sent: 2500, opened: 625, clicked: 175, date: "Mar 10" },
-    { name: "Promo Semana Santa", status: "scheduled", sent: 0, opened: 0, clicked: 0, date: "Mar 28" },
-    { name: "Bienvenida Nuevos", status: "active", sent: 384, opened: 230, clicked: 92, date: "Continuo" },
-    { name: "Re-engagement Q1", status: "draft", sent: 0, opened: 0, clicked: 0, date: "-" },
-  ];
+  const { data: campaigns, isLoading } = trpc.emailCampaigns.list.useQuery();
 
-  const statusColors: Record<string, string> = { sent: "#3ecf8e", scheduled: "#6366f1", active: "#f59e0b", draft: "#888" };
+  const statusColors: Record<string, string> = { sent: "#3ecf8e", scheduled: "#f59e0b", active: "#6366f1", draft: "#888" };
   const statusLabels: Record<string, string> = { sent: "Enviado", scheduled: "Programado", active: "Activo", draft: "Borrador" };
+
+  const totalSent = campaigns?.reduce((acc, c) => {
+    const stats = c.stats as Record<string, number> | null;
+    return acc + (stats?.sent ?? 0);
+  }, 0) ?? 0;
+
+  const totalOpened = campaigns?.reduce((acc, c) => {
+    const stats = c.stats as Record<string, number> | null;
+    return acc + (stats?.opened ?? 0);
+  }, 0) ?? 0;
+
+  const openRate = totalSent > 0 ? ((totalOpened / totalSent) * 100).toFixed(1) : "0";
 
   return (
     <>
@@ -654,46 +662,59 @@ export function EmailCampanasPage() {
         }
       />
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <StatCard label="Emails enviados" value="2,884" icon={<Send size={16} />} />
-        <StatCard label="Tasa de apertura" value="24.6%" icon={<Eye size={16} />} />
-        <StatCard label="Tasa de clics" value="7.2%" icon={<MousePointerClick size={16} />} />
+        <StatCard label="Emails enviados" value={totalSent.toLocaleString()} icon={<Send size={16} />} />
+        <StatCard label="Tasa de apertura" value={`${openRate}%`} icon={<Eye size={16} />} />
+        <StatCard label="Campanas" value={String(campaigns?.length ?? 0)} icon={<MousePointerClick size={16} />} />
       </div>
-      <div className="rounded-lg border border-[#2e2e2e] overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr style={{ backgroundColor: "#1e1e1e" }}>
-              {["Campana", "Estado", "Enviados", "Abiertos", "Clics", "Fecha"].map((h) => (
-                <th key={h} className="text-left text-[11px] uppercase tracking-wider text-[#888] font-medium px-4 py-3 border-b border-[#2e2e2e]">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {campaigns.map((c, i) => (
-              <tr key={i} className="border-b border-[#2e2e2e] last:border-0 hover:bg-[#1e1e1e] transition-colors cursor-pointer">
-                <td className="px-4 py-3 text-[13px] text-[#ededed] font-medium">{c.name}</td>
-                <td className="px-4 py-3"><Badge text={statusLabels[c.status] ?? c.status} color={statusColors[c.status] ?? "#888"} /></td>
-                <td className="px-4 py-3 text-[13px] text-[#ccc]">{c.sent.toLocaleString()}</td>
-                <td className="px-4 py-3 text-[13px] text-[#ccc]">{c.opened.toLocaleString()}</td>
-                <td className="px-4 py-3 text-[13px] text-[#ccc]">{c.clicked.toLocaleString()}</td>
-                <td className="px-4 py-3 text-[13px] text-[#888]">{c.date}</td>
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-14 rounded-lg border border-[#2e2e2e] animate-pulse" style={{ backgroundColor: "#1e1e1e" }} />
+          ))}
+        </div>
+      ) : !campaigns || campaigns.length === 0 ? (
+        <div className="rounded-lg border border-[#2e2e2e] p-8 text-center" style={{ backgroundColor: "#1e1e1e" }}>
+          <Mail size={32} className="text-[#555] mx-auto mb-2" />
+          <p className="text-[13px] text-[#888]">No hay campanas aun. Crea tu primera campana.</p>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-[#2e2e2e] overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr style={{ backgroundColor: "#1e1e1e" }}>
+                {["Campana", "Plantilla", "Estado", "Enviados", "Apertura", "Fecha"].map((h) => (
+                  <th key={h} className="text-left text-[11px] uppercase tracking-wider text-[#888] font-medium px-4 py-3 border-b border-[#2e2e2e]">{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {campaigns.map((c) => {
+                const stats = c.stats as Record<string, number> | null;
+                const sent = stats?.sent ?? 0;
+                const opened = stats?.opened ?? 0;
+                const rate = sent > 0 ? ((opened / sent) * 100).toFixed(1) + "%" : "-";
+                return (
+                  <tr key={c.id} className="border-b border-[#2e2e2e] last:border-0 hover:bg-[#1e1e1e] transition-colors cursor-pointer">
+                    <td className="px-4 py-3 text-[13px] text-[#ededed] font-medium">{c.name}</td>
+                    <td className="px-4 py-3 text-[13px] text-[#ccc]">{c.templateName}</td>
+                    <td className="px-4 py-3"><Badge text={statusLabels[c.status] ?? c.status} color={statusColors[c.status] ?? "#888"} /></td>
+                    <td className="px-4 py-3 text-[13px] text-[#ccc]">{sent.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-[13px] text-[#ccc]">{rate}</td>
+                    <td className="px-4 py-3 text-[13px] text-[#888]">{c.sentAt ? new Date(c.sentAt).toLocaleDateString() : "-"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </>
   );
 }
 
 export function PlantillasEmailPage() {
-  const templates = [
-    { name: "Bienvenida", category: "Onboarding", uses: 384 },
-    { name: "Newsletter", category: "Marketing", uses: 12 },
-    { name: "Promocion", category: "Sales", uses: 8 },
-    { name: "Seguimiento", category: "CRM", uses: 156 },
-    { name: "Carrito Abandonado", category: "E-commerce", uses: 45 },
-    { name: "Feedback", category: "Post-venta", uses: 23 },
-  ];
+  const { data: templates, isLoading } = trpc.emailTemplates.list.useQuery();
 
   return (
     <>
@@ -707,53 +728,74 @@ export function PlantillasEmailPage() {
           </button>
         }
       />
-      <div className="grid grid-cols-3 gap-3">
-        {templates.map((t) => (
-          <div key={t.name} className="rounded-lg border border-[#2e2e2e] p-4 hover:border-[#3ecf8e]/30 transition-colors cursor-pointer" style={{ backgroundColor: "#1e1e1e" }}>
-            <div className="w-full h-24 rounded mb-3 flex items-center justify-center" style={{ backgroundColor: "#252525" }}>
-              <Mail size={24} className="text-[#555]" />
+      {isLoading ? (
+        <div className="grid grid-cols-3 gap-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-40 rounded-lg border border-[#2e2e2e] animate-pulse" style={{ backgroundColor: "#1e1e1e" }} />
+          ))}
+        </div>
+      ) : !templates || templates.length === 0 ? (
+        <div className="rounded-lg border border-[#2e2e2e] p-8 text-center" style={{ backgroundColor: "#1e1e1e" }}>
+          <Mail size={32} className="text-[#555] mx-auto mb-2" />
+          <p className="text-[13px] text-[#888]">No hay plantillas aun. Crea tu primera plantilla.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-3">
+          {templates.map((t) => (
+            <div key={t.id} className="rounded-lg border border-[#2e2e2e] p-4 hover:border-[#3ecf8e]/30 transition-colors cursor-pointer" style={{ backgroundColor: "#1e1e1e" }}>
+              <div className="w-full h-24 rounded mb-3 flex items-center justify-center" style={{ backgroundColor: "#252525" }}>
+                <Mail size={24} className="text-[#555]" />
+              </div>
+              <p className="text-[13px] font-medium text-[#ededed]">{t.name}</p>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-[11px] text-[#888]">{t.subject}</span>
+                <span className="text-[11px] text-[#888]">{new Date(t.updatedAt).toLocaleDateString()}</span>
+              </div>
             </div>
-            <p className="text-[13px] font-medium text-[#ededed]">{t.name}</p>
-            <div className="flex items-center justify-between mt-1">
-              <span className="text-[11px] text-[#888]">{t.category}</span>
-              <span className="text-[11px] text-[#888]">{t.uses} usos</span>
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </>
   );
 }
 
 export function SecuenciasEmailPage() {
-  const sequences = [
-    { name: "Onboarding (5 emails)", status: "active", contacts: 45, completion: 68 },
-    { name: "Nurture Lead (3 emails)", status: "active", contacts: 120, completion: 42 },
-    { name: "Re-engagement (4 emails)", status: "paused", contacts: 23, completion: 15 },
-  ];
+  const { data: sequences, isLoading } = trpc.sequences.list.useQuery();
 
   return (
     <>
       <SectionHeader title="Secuencias" description="Secuencias automatizadas de emails" />
-      <div className="space-y-3">
-        {sequences.map((s) => (
-          <div key={s.name} className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <h3 className="text-[13px] font-medium text-[#ededed]">{s.name}</h3>
-                <Badge text={s.status === "active" ? "Activa" : "Pausada"} color={s.status === "active" ? "#3ecf8e" : "#f59e0b"} />
+      {isLoading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-20 rounded-lg border border-[#2e2e2e] animate-pulse" style={{ backgroundColor: "#1e1e1e" }} />
+          ))}
+        </div>
+      ) : !sequences || sequences.length === 0 ? (
+        <div className="rounded-lg border border-[#2e2e2e] p-8 text-center" style={{ backgroundColor: "#1e1e1e" }}>
+          <Mail size={32} className="text-[#555] mx-auto mb-2" />
+          <p className="text-[13px] text-[#888]">No hay secuencias aun. Crea tu primera secuencia.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {sequences.map((s) => {
+            const steps = (s.steps as Array<unknown>) ?? [];
+            const enrolled = s._count?.enrollments ?? 0;
+            return (
+              <div key={s.id} className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-[13px] font-medium text-[#ededed]">{s.name}</h3>
+                    <Badge text={s.isActive ? "Activa" : "Pausada"} color={s.isActive ? "#3ecf8e" : "#f59e0b"} />
+                  </div>
+                  <span className="text-[12px] text-[#888]">{enrolled} contactos inscritos</span>
+                </div>
+                <p className="text-[11px] text-[#888]">{steps.length} paso{steps.length !== 1 ? "s" : ""}</p>
               </div>
-              <span className="text-[12px] text-[#888]">{s.contacts} contactos activos</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 h-2 rounded-full" style={{ backgroundColor: "#2a2a2a" }}>
-                <div className="h-2 rounded-full" style={{ width: `${s.completion}%`, backgroundColor: "#3ecf8e" }} />
-              </div>
-              <span className="text-[11px] text-[#888]">{s.completion}% completado</span>
-            </div>
-          </div>
-        ))}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </>
   );
 }

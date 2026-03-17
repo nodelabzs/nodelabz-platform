@@ -10,6 +10,15 @@ import { dealsRouter } from "./routers/deals";
 import { pipelineRouter } from "./routers/pipeline";
 import { activitiesRouter } from "./routers/activities";
 import { billingRouter } from "./routers/billing";
+import { integrationsRouter } from "./routers/integrations";
+import { campaignsRouter } from "./routers/campaigns";
+import { healthScoreRouter } from "./routers/health-score";
+import { emailTemplatesRouter } from "./routers/email-templates";
+import { emailCampaignsRouter } from "./routers/email-campaigns";
+import { sequencesRouter } from "./routers/sequences";
+import { whatsappRouter } from "./routers/whatsapp";
+import { notificationsRouter } from "./routers/notifications";
+import { reportsRouter } from "./routers/reports";
 
 export const appRouter = router({
   health: publicProcedure.query(() => ({ status: "ok" })),
@@ -23,6 +32,15 @@ export const appRouter = router({
   pipeline: pipelineRouter,
   activities: activitiesRouter,
   billing: billingRouter,
+  integrations: integrationsRouter,
+  campaigns: campaignsRouter,
+  healthScore: healthScoreRouter,
+  emailTemplates: emailTemplatesRouter,
+  emailCampaigns: emailCampaignsRouter,
+  sequences: sequencesRouter,
+  whatsapp: whatsappRouter,
+  notifications: notificationsRouter,
+  reports: reportsRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -10,6 +10,7 @@ import { SuperAdminBanner } from "@/components/ui/super-admin-banner";
 import { useChatStore } from "@/stores/chat-store";
 import { trpc } from "@/lib/trpc";
 import { usePathname } from "next/navigation";
+import { useIdleTimeout } from "@/hooks/use-idle-timeout";
 import type { AiSection, ChatArtifact, PlanName, WorkflowArtifact, Permissions } from "@nodelabz/shared-types";
 
 export function DashboardShell({
@@ -27,6 +28,7 @@ export function DashboardShell({
 
   const pathname = usePathname();
   const { workflowDraft, setWorkflowDraft, autonomy } = useChatStore();
+  const { showWarning, secondsLeft, stayLoggedIn, logout } = useIdleTimeout();
 
   const createWorkflow = trpc.workflow.create.useMutation();
   const utils = trpc.useUtils();
@@ -154,6 +156,39 @@ export function DashboardShell({
           />
         )}
       </div>
+
+      {/* Inactivity warning modal */}
+      {showWarning && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-xl border border-[#2e2e2e] p-6 text-center" style={{ backgroundColor: "#1c1c1c" }}>
+            <div className="w-12 h-12 rounded-full bg-yellow-500/20 flex items-center justify-center mx-auto mb-4">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+            </div>
+            <h3 className="text-[16px] font-semibold text-[#ededed] mb-2">Sesion por expirar</h3>
+            <p className="text-[13px] text-[#888] mb-4">
+              Tu sesion se cerrara en <span className="text-[#f59e0b] font-bold">{Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, "0")}</span> por inactividad.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={logout}
+                className="flex-1 py-2 px-4 rounded-lg border border-[#333] text-[13px] text-[#888] hover:text-[#ededed] hover:border-[#555] transition-colors"
+              >
+                Cerrar sesion
+              </button>
+              <button
+                onClick={stayLoggedIn}
+                className="flex-1 py-2 px-4 rounded-lg text-[13px] font-semibold text-white transition-colors"
+                style={{ backgroundColor: "#3ecf8e" }}
+              >
+                Seguir conectado
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

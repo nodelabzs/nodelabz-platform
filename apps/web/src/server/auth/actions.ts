@@ -67,7 +67,7 @@ export async function signUpAction(
     return { error: "Error al configurar tu cuenta. Contacta soporte." };
   }
 
-  redirect("/dashboard/org");
+  redirect("/auth/loading");
 }
 
 export type InviteSignUpState = {
@@ -160,5 +160,5 @@ export async function inviteSignUpAction(
     return { error: "Error al configurar tu cuenta." };
   }
 
-  redirect("/dashboard/org");
+  redirect("/auth/loading");
 }

@@ -12,7 +12,6 @@ import {
   BarChart3,
   Plug,
   Settings,
-  User,
   Sparkles,
 } from "lucide-react";
 import type { Permissions } from "@nodelabz/shared-types";
@@ -217,9 +216,6 @@ export function IconNavigation({
           )}
           <Settings size={18} />
         </button>
-        <div className="w-[30px] h-[30px] rounded-full flex items-center justify-center mt-2" style={{ backgroundColor: '#333' }}>
-          <User size={14} className="text-[#999]" />
-        </div>
       </div>
     </aside>
   );
