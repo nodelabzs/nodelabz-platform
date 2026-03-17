@@ -2,10 +2,19 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Building2 } from "lucide-react";
 import { NewProjectWizard } from "@/components/ui/new-project-wizard";
+import { trpc } from "@/lib/trpc";
 
 export default function OrgPage() {
   const [wizardOpen, setWizardOpen] = useState(false);
+
+  const { data: session } = trpc.auth.getSession.useQuery();
+  const isSuperAdmin = session?.user?.isSuperAdmin ?? false;
+
+  const { data: stats } = trpc.superadmin.getPlatformStats.useQuery(undefined, {
+    enabled: isSuperAdmin,
+  });
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -31,6 +40,7 @@ export default function OrgPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* NodeLabz card */}
         <Link href="/dashboard" className="block rounded-lg border border-[#2e2e2e] p-4 hover:border-[#444] transition-colors" style={{ backgroundColor: '#1c1c1c' }}>
           <div className="flex items-center justify-between mb-1">
             <h3 className="text-[14px] font-medium text-[#ededed]">NodeLabz</h3>
@@ -59,6 +69,36 @@ export default function OrgPage() {
             </div>
           </div>
         </Link>
+
+        {/* Gestion de Clientes card — super admin only */}
+        {isSuperAdmin && (
+          <Link href="/dashboard/companies" className="block rounded-lg border border-[#2e2e2e] p-4 hover:border-[#444] transition-colors" style={{ backgroundColor: '#1c1c1c' }}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-[14px] font-medium text-[#ededed]">Gestion de Clientes</h3>
+              <span className="text-[#555] hover:text-[#999]">
+                <Building2 size={16} />
+              </span>
+            </div>
+            <p className="text-[12px] text-[#555] mb-2">Marketing, Data & AI para tus clientes</p>
+            <div className="flex items-center gap-1.5 mb-3">
+              <span className="text-[10px] px-1.5 py-[1px] rounded border text-emerald-400 border-emerald-500/30 font-medium uppercase">Super Admin</span>
+            </div>
+            <div className="flex items-center gap-4 pt-3 border-t border-[#2e2e2e]">
+              <div>
+                <p className="text-[10px] text-[#555] uppercase">Empresas</p>
+                <p className="text-[13px] text-[#ededed] font-medium">{stats?.totalTenants ?? 0}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-[#555] uppercase">Activas</p>
+                <p className="text-[13px] text-[#ededed] font-medium">{stats?.activeTenants ?? 0}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-[#555] uppercase">En Trial</p>
+                <p className="text-[13px] text-[#ededed] font-medium">{stats?.trialTenants ?? 0}</p>
+              </div>
+            </div>
+          </Link>
+        )}
       </div>
 
       <NewProjectWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />

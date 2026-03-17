@@ -53,18 +53,20 @@ model Tenant {
 }
 
 model User {
-  id          String   @id @default(uuid())
-  tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  supabaseId  String   @unique
-  email       String
-  name        String
-  avatarUrl   String?
-  roleId      String
-  role        Role     @relation(fields: [roleId], references: [id])
-  preferences Json?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(uuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supabaseId     String   @unique
+  email          String
+  name           String
+  avatarUrl      String?
+  roleId         String
+  role           Role     @relation(fields: [roleId], references: [id])
+  isSuperAdmin   Boolean  @default(false)
+  activeTenantId String?
+  preferences    Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([tenantId])
   @@index([supabaseId])
@@ -416,4 +418,23 @@ model EmailCampaign {
   @@index([tenantId])
   @@index([tenantId, status])
   @@map("email_campaigns")
+}
+
+// ============================
+// PLATFORM ADMIN
+// ============================
+
+model PlatformAuditLog {
+  id         String   @id @default(uuid())
+  userId     String
+  action     String
+  targetType String?
+  targetId   String?
+  metadata   Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([action, createdAt])
+  @@map("platform_audit_logs")
 }

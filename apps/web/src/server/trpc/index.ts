@@ -1,51 +1,28 @@
-import { initTRPC, TRPCError } from "@trpc/server";
-import superjson from "superjson";
-import { ZodError } from "zod";
-import { createClient } from "@/lib/supabase/server";
-
-export async function createTRPCContext({ req }: { req: Request }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  return {
-    user,
-    supabase,
-  };
-}
-
-const t = initTRPC
-  .context<Awaited<ReturnType<typeof createTRPCContext>>>()
-  .create({
-    transformer: superjson,
-    errorFormatter({ shape, error }) {
-      return {
-        ...shape,
-        data: {
-          ...shape.data,
-          zodError:
-            error.cause instanceof ZodError ? error.cause.flatten() : null,
-        },
-      };
-    },
-  });
-
-export const router = t.router;
-export const publicProcedure = t.procedure;
-export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
-  if (!ctx.user) {
-    throw new TRPCError({ code: "UNAUTHORIZED" });
-  }
-  return next({ ctx: { ...ctx, user: ctx.user } });
-});
-
-// Import routers
+export { createTRPCContext, router, publicProcedure, protectedProcedure, tenantProcedure, superAdminProcedure } from "./init";
+import { router, publicProcedure } from "./init";
 import { authRouter } from "./routers/auth";
+import { conversationRouter } from "./routers/conversation";
+import { workflowRouter } from "./routers/workflow";
+import { superadminRouter } from "./routers/superadmin";
+import { teamRouter } from "./routers/team";
+import { contactsRouter } from "./routers/contacts";
+import { dealsRouter } from "./routers/deals";
+import { pipelineRouter } from "./routers/pipeline";
+import { activitiesRouter } from "./routers/activities";
+import { billingRouter } from "./routers/billing";
 
 export const appRouter = router({
   health: publicProcedure.query(() => ({ status: "ok" })),
   auth: authRouter,
+  conversation: conversationRouter,
+  workflow: workflowRouter,
+  superadmin: superadminRouter,
+  team: teamRouter,
+  contacts: contactsRouter,
+  deals: dealsRouter,
+  pipeline: pipelineRouter,
+  activities: activitiesRouter,
+  billing: billingRouter,
 });
 
 export type AppRouter = typeof appRouter;

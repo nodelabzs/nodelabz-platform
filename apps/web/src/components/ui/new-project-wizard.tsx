@@ -73,7 +73,7 @@ export function NewProjectWizard({ open, onClose }: NewProjectWizardProps) {
     setStep(3);
     setTimeout(() => {
       onClose();
-      router.push("/dashboard");
+      router.push("/dashboard/org");
       router.refresh();
     }, 2000);
   };

@@ -1,4 +1,4 @@
-import { router, publicProcedure, protectedProcedure } from "../index";
+import { router, publicProcedure, protectedProcedure } from "../init";
 import { findUserBySupabaseId } from "@/server/auth/provision";
 
 export const authRouter = router({
@@ -20,6 +20,8 @@ export const authRouter = router({
         avatarUrl: dbUser.avatarUrl,
         role: dbUser.role.name,
         permissions: dbUser.role.permissions,
+        isSuperAdmin: dbUser.isSuperAdmin,
+        activeTenantId: dbUser.activeTenantId,
       },
       tenant: {
         id: dbUser.tenant.id,

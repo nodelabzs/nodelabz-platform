@@ -27,5 +27,8 @@ export async function updateSession(request: NextRequest) {
 
   await supabase.auth.getUser();
 
+  // Pass the current pathname as a header so server components can read it
+  supabaseResponse.headers.set("x-pathname", request.nextUrl.pathname);
+
   return supabaseResponse;
 }

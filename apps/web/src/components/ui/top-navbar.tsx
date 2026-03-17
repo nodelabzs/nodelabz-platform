@@ -5,17 +5,22 @@ import { Search, HelpCircle, Bell, ChevronDown, MessageSquare, LogOut, User, Set
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { TenantSwitcher } from "./tenant-switcher";
 
 export function TopNavbar({
   tenantName,
   userName,
   projectName,
   plan,
+  isSuperAdmin,
+  companiesContext,
 }: {
   tenantName?: string;
   userName?: string;
   projectName?: string;
   plan?: string;
+  isSuperAdmin?: boolean;
+  companiesContext?: { companyName: string; companyId: string };
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -46,23 +51,51 @@ export function TopNavbar({
           <img src="/logo.png" alt="NodeLabz" width={18} height={18} className="flex-shrink-0 hover:opacity-80 transition-opacity" />
         </Link>
         <span className="text-[#444]">/</span>
-        <Link href="/dashboard/org" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
-          <span className="text-[#ededed] text-[13px]">{tenantName || "NodeLabz"}</span>
-          <span className="text-[9px] px-[5px] py-[1px] rounded border border-[#444] text-[#888] font-medium uppercase tracking-widest">
-            {plan || "Inicio"}
-          </span>
-          <ChevronDown size={12} className="text-[#666]" />
-        </Link>
-        {projectName && (
+
+        {/* Tenant name — use TenantSwitcher for Super Admins */}
+        {isSuperAdmin ? (
+          <div className="flex items-center gap-1.5">
+            <TenantSwitcher currentTenantName={tenantName || "NodeLabz"} />
+            <span className="text-[9px] px-[5px] py-[1px] rounded border border-emerald-500/30 text-emerald-400 font-medium uppercase tracking-widest">
+              {plan || "Super Admin"}
+            </span>
+          </div>
+        ) : (
+          <Link href="/dashboard/org" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
+            <span className="text-[#ededed] text-[13px]">{tenantName || "NodeLabz"}</span>
+            <span className="text-[9px] px-[5px] py-[1px] rounded border border-[#444] text-[#888] font-medium uppercase tracking-widest">
+              {plan || "Inicio"}
+            </span>
+            <ChevronDown size={12} className="text-[#666]" />
+          </Link>
+        )}
+
+        {companiesContext ? (
+          <>
+            <span className="text-[#444]">/</span>
+            <Link href="/dashboard/companies" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
+              <span className="text-[#ededed] text-[13px]">Gestion de Clientes</span>
+            </Link>
+            {companiesContext.companyName && (
+              <>
+                <span className="text-[#444]">/</span>
+                <span className="text-[#ededed] text-[13px]">{companiesContext.companyName}</span>
+              </>
+            )}
+            <span className="text-[#444]">/</span>
+          </>
+        ) : projectName ? (
           <>
             <span className="text-[#444]">/</span>
             <Link href="/dashboard" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
               <span className="text-[#ededed] text-[13px]">{projectName}</span>
               <ChevronDown size={12} className="text-[#666]" />
             </Link>
+            <span className="text-[#444]">/</span>
           </>
+        ) : (
+          <span className="text-[#444]">/</span>
         )}
-        <span className="text-[#444]">/</span>
       </div>
 
       <div className="flex items-center gap-1.5">
@@ -99,6 +132,7 @@ export function TopNavbar({
                 <p className="text-[13px] text-[#ededed] font-medium">{userName || "Usuario"}</p>
                 <p className="text-[11px] text-[#666]">{tenantName || "NodeLabz"}</p>
               </div>
+
               <Link
                 href="/dashboard/org/settings"
                 onClick={() => setMenuOpen(false)}

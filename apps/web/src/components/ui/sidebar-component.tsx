@@ -15,11 +15,13 @@ import {
   User,
   Sparkles,
 } from "lucide-react";
+import type { Permissions } from "@nodelabz/shared-types";
 
 interface NavItem {
   id: string;
   icon: React.ReactNode;
   label: string;
+  permission?: keyof Permissions;
 }
 
 interface DetailItem {
@@ -38,22 +40,22 @@ interface DetailContent {
 }
 
 const navItems: NavItem[] = [
-  { id: "dashboard", icon: <LayoutDashboard size={18} />, label: "Dashboard" },
-  { id: "contacts", icon: <Users size={18} />, label: "Contactos" },
-  { id: "campaigns", icon: <Megaphone size={18} />, label: "Campanas" },
-  { id: "email", icon: <Mail size={18} />, label: "Email" },
-  { id: "whatsapp", icon: <MessageCircle size={18} />, label: "WhatsApp" },
-  { id: "social", icon: <Share2 size={18} />, label: "Social" },
-  { id: "automations", icon: <Workflow size={18} />, label: "Automatizaciones" },
-  { id: "reports", icon: <BarChart3 size={18} />, label: "Reportes" },
-  { id: "integrations", icon: <Plug size={18} />, label: "Integraciones" },
+  { id: "dashboard", icon: <LayoutDashboard size={18} />, label: "Dashboard", permission: "analytics" },
+  { id: "contacts", icon: <Users size={18} />, label: "Contactos", permission: "crm" },
+  { id: "campaigns", icon: <Megaphone size={18} />, label: "Campanas", permission: "campaigns" },
+  { id: "email", icon: <Mail size={18} />, label: "Email", permission: "campaigns" },
+  { id: "whatsapp", icon: <MessageCircle size={18} />, label: "WhatsApp", permission: "campaigns" },
+  { id: "social", icon: <Share2 size={18} />, label: "Social", permission: "campaigns" },
+  { id: "automations", icon: <Workflow size={18} />, label: "Automatizaciones", permission: "campaigns" },
+  { id: "reports", icon: <BarChart3 size={18} />, label: "Reportes", permission: "reports" },
+  { id: "integrations", icon: <Plug size={18} />, label: "Integraciones", permission: "integrations" },
 ];
 
 const contentMap: Record<string, DetailContent> = {
   dashboard: {
     title: "Dashboard",
     sections: [
-      { title: "OVERVIEW", items: [{ label: "Health Score", isActive: true }, { label: "Metricas" }, { label: "Node Map" }] },
+      { title: "OVERVIEW", items: [{ label: "Home", isActive: true }, { label: "Health Score" }, { label: "Metricas" }, { label: "Node Map" }] },
       { title: "INSIGHTS", items: [{ label: "Recomendaciones IA" }, { label: "Digest Diario" }] },
       { title: "ACCIONES RAPIDAS", items: [{ label: "Conectar plataforma" }, { label: "Generar reporte" }] },
     ],
@@ -137,16 +139,29 @@ export function IconNavigation({
   onSectionChange,
   onAiChatToggle,
   aiChatOpen,
+  isSuperAdmin,
+  permissions,
 }: {
   activeSection: string;
   onSectionChange: (section: string) => void;
   onAiChatToggle?: () => void;
   aiChatOpen?: boolean;
+  isSuperAdmin?: boolean;
+  permissions?: Permissions;
 }) {
+  // Filter nav items by permissions
+  const visibleItems = navItems.filter((item) => {
+    if (isSuperAdmin) return true; // Super Admins see everything
+    if (!item.permission) return true; // No permission required
+    if (!permissions) return true; // No permissions loaded yet, show all
+    const perm = permissions[item.permission];
+    return perm !== "none";
+  });
+
   return (
     <aside className="flex flex-col items-center py-2 w-[48px] h-full border-r border-[#2e2e2e] flex-shrink-0" style={{ backgroundColor: '#1c1c1c' }}>
       <div className="flex flex-col gap-[2px] w-full items-center px-1">
-        {navItems.map((item) => (
+        {visibleItems.map((item) => (
           <button
             key={item.id}
             type="button"
@@ -210,8 +225,16 @@ export function IconNavigation({
   );
 }
 
-export function DetailSidebar({ activeSection }: { activeSection: string }) {
-  const content = contentMap[activeSection] || contentMap.dashboard;
+export function DetailSidebar({
+  activeSection,
+  activeItem,
+  onItemChange,
+}: {
+  activeSection: string;
+  activeItem?: string;
+  onItemChange?: (item: string) => void;
+}) {
+  const content = contentMap[activeSection] ?? contentMap["dashboard"]!;
   return (
     <aside className="w-[240px] h-full border-r border-[#2e2e2e] flex flex-col flex-shrink-0 overflow-y-auto" style={{ backgroundColor: '#1c1c1c' }}>
       <div className="px-5 pt-3 pb-2 border-b border-[#2e2e2e]">
@@ -230,21 +253,24 @@ export function DetailSidebar({ activeSection }: { activeSection: string }) {
                 </span>
               </div>
               <div>
-                {section.items.map((item, iIdx) => (
-                  <a
-                    key={iIdx}
-                    href="#"
-                    onClick={(e) => e.preventDefault()}
-                    className={`block text-[14px] py-[5px] px-6 transition-colors ${
-                      item.isActive
-                        ? "text-[#ededed] font-medium"
-                        : "text-[#999] hover:text-[#ededed]"
-                    }`}
-                    style={item.isActive ? { backgroundColor: '#2a2a2a' } : {}}
-                  >
-                    {item.label}
-                  </a>
-                ))}
+                {section.items.map((item, iIdx) => {
+                  const isActive = activeItem ? item.label === activeItem : item.isActive;
+                  return (
+                    <button
+                      key={iIdx}
+                      type="button"
+                      onClick={() => onItemChange?.(item.label)}
+                      className={`block w-full text-left text-[14px] py-[5px] px-6 transition-colors ${
+                        isActive
+                          ? "text-[#ededed] font-medium"
+                          : "text-[#999] hover:text-[#ededed]"
+                      }`}
+                      style={isActive ? { backgroundColor: '#2a2a2a' } : {}}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
               </div>
             </li>
           ))}

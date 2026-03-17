@@ -24,3 +24,5 @@ export const permissionsSchema = z.object({
 
 export type Permissions = z.infer<typeof permissionsSchema>;
 export type CreateTenantInput = z.infer<typeof createTenantSchema>;
+
+export type UserTier = "super_admin" | "company_admin" | "manager" | "editor" | "viewer";

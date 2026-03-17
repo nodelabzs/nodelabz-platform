@@ -44,7 +44,7 @@ export function ResetPasswordForm() {
     setLoading(false);
 
     setTimeout(() => {
-      router.push("/dashboard");
+      router.push("/dashboard/org");
       router.refresh();
     }, 2000);
   };

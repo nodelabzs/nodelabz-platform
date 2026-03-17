@@ -161,6 +161,13 @@ export async function findUserBySupabaseId(supabaseId: string) {
   });
 }
 
+export async function promoteToPlatformAdmin(userId: string) {
+  return prisma.user.update({
+    where: { id: userId },
+    data: { isSuperAdmin: true },
+  });
+}
+
 export async function ensureUserProvisioned({
   supabaseId,
   email,
