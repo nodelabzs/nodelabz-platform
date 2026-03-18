@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useMemo } from "react";
+import React, { useCallback, useState, useMemo, useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import {
   ReactFlow,
@@ -63,7 +63,26 @@ import {
   AlertTriangle,
   CheckCircle2,
   XCircle,
+  GripVertical,
+  Settings,
+  RotateCcw,
+  LayoutDashboard,
 } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  rectSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 // ============================
 // SHARED COMPONENTS
@@ -818,459 +837,438 @@ function MetricasAIDot(props: any) {
   return <circle cx={cx} cy={cy} r={0} />;
 }
 
+// ── Metricas Dashboard (react-grid-layout) ──
+import GridLayout, { type LayoutItem, noCompactor, type Layout } from "react-grid-layout";
+import "react-grid-layout/css/styles.css";
+
+
+const METRICAS_STORAGE_KEY = "nodelabz-metricas-layout";
+
+interface WidgetType {
+  id: string;
+  label: string;
+  icon: React.ReactNode;
+  defaultW: number;
+  defaultH: number;
+  description: string;
+}
+
+const AVAILABLE_WIDGETS: WidgetType[] = [
+  // ── Charts ──
+  { id: "kpi", label: "KPI Card", icon: <BarChart3 size={16} />, defaultW: 3, defaultH: 4, description: "Metrica individual con valor y tendencia" },
+  { id: "bar-chart", label: "Grafico de Barras", icon: <BarChart3 size={16} />, defaultW: 6, defaultH: 8, description: "Comparar valores entre categorias" },
+  { id: "line-chart", label: "Grafico de Lineas", icon: <Activity size={16} />, defaultW: 6, defaultH: 8, description: "Tendencias a lo largo del tiempo" },
+  { id: "area-chart", label: "Grafico de Area", icon: <Activity size={16} />, defaultW: 6, defaultH: 8, description: "Volumen y tendencia combinados" },
+  { id: "donut", label: "Donut / Pie", icon: <Target size={16} />, defaultW: 6, defaultH: 10, description: "Distribucion porcentual" },
+  { id: "table", label: "Tabla", icon: <LayoutDashboard size={16} />, defaultW: 6, defaultH: 8, description: "Datos tabulares con columnas" },
+  { id: "text", label: "Nota / Texto", icon: <Zap size={16} />, defaultW: 3, defaultH: 4, description: "Texto libre o anotacion" },
+  // ── Marketing Performance ──
+  { id: "leads-hoy", label: "Leads Hoy", icon: <Users size={16} />, defaultW: 3, defaultH: 4, description: "Contador en vivo de leads capturados hoy" },
+  { id: "roas-canal", label: "ROAS por Canal", icon: <BarChart3 size={16} />, defaultW: 6, defaultH: 8, description: "Comparar ROAS entre Meta, Google y TikTok" },
+  { id: "gasto-revenue", label: "Gasto vs Revenue", icon: <Activity size={16} />, defaultW: 6, defaultH: 8, description: "Gasto publicitario vs ingresos generados" },
+  { id: "cpl-trend", label: "CPL Trend", icon: <TrendingDown size={16} />, defaultW: 6, defaultH: 8, description: "Costo por lead a lo largo del tiempo" },
+  { id: "campaign-status", label: "Estado de Campanas", icon: <Target size={16} />, defaultW: 4, defaultH: 4, description: "Campanas activas, pausadas y finalizadas" },
+  // ── CRM & Pipeline ──
+  { id: "pipeline-funnel", label: "Pipeline Funnel", icon: <TrendingUp size={16} />, defaultW: 6, defaultH: 10, description: "Embudo visual de etapas de deals" },
+  { id: "deals-por-cerrar", label: "Deals por Cerrar", icon: <DollarSign size={16} />, defaultW: 4, defaultH: 8, description: "Deals mas cercanos al cierre" },
+  { id: "win-rate", label: "Win Rate", icon: <Target size={16} />, defaultW: 3, defaultH: 4, description: "Tasa de conversion de deals" },
+  { id: "leads-calientes", label: "Leads Calientes", icon: <Zap size={16} />, defaultW: 4, defaultH: 8, description: "Leads HOT con mayor puntuacion" },
+  { id: "actividad-reciente", label: "Actividad Reciente", icon: <Activity size={16} />, defaultW: 4, defaultH: 8, description: "Ultimas actividades del CRM" },
+  // ── Channels ──
+  { id: "whatsapp-inbox", label: "WhatsApp Inbox", icon: <MessageCircle size={16} />, defaultW: 4, defaultH: 6, description: "Conversaciones sin leer y ultimos mensajes" },
+  { id: "email-open-rate", label: "Email Open Rate", icon: <Mail size={16} />, defaultW: 3, defaultH: 4, description: "Tasa de apertura de emails actual" },
+  { id: "social-engagement", label: "Social Engagement", icon: <Globe size={16} />, defaultW: 4, defaultH: 6, description: "Engagement en redes sociales" },
+  { id: "integration-status", label: "Estado Integraciones", icon: <Plug size={16} />, defaultW: 4, defaultH: 4, description: "Salud de plataformas conectadas" },
+  // ── AI & Insights ──
+  { id: "ai-recomendacion", label: "AI Recomendacion", icon: <Lightbulb size={16} />, defaultW: 6, defaultH: 4, description: "Ultima recomendacion de la IA" },
+  { id: "health-score", label: "Health Score", icon: <Activity size={16} />, defaultW: 3, defaultH: 6, description: "Puntuacion de salud 0-100" },
+  { id: "anomaly-alert", label: "Anomaly Alert", icon: <AlertTriangle size={16} />, defaultW: 4, defaultH: 4, description: "Metricas con desviaciones detectadas" },
+  { id: "prediccion-revenue", label: "Prediccion Revenue", icon: <TrendingUp size={16} />, defaultW: 6, defaultH: 8, description: "Proyeccion de ingresos con IA" },
+  // ── Financial ──
+  { id: "revenue-mtd", label: "Revenue MTD", icon: <DollarSign size={16} />, defaultW: 3, defaultH: 4, description: "Ingresos del mes con tendencia" },
+  { id: "mrr-tracker", label: "MRR Tracker", icon: <DollarSign size={16} />, defaultW: 6, defaultH: 8, description: "Revenue recurrente mensual" },
+  { id: "top-clientes", label: "Top Clientes", icon: <Users size={16} />, defaultW: 4, defaultH: 8, description: "Clientes con mayor valor" },
+];
+
+const defaultGridLayout: LayoutItem[] = [];
+
+interface PlacedWidget {
+  layoutItem: LayoutItem;
+  widgetType: string;
+  title: string;
+}
+
 export function MetricasPage() {
+  const [widgets, setWidgets] = useState<PlacedWidget[]>([]);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [gridWidth, setGridWidth] = useState(1200);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // Load from localStorage (handle old format migration)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(METRICAS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Check if it's the new format (array of PlacedWidget with layoutItem)
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.layoutItem?.i) {
+          setWidgets(parsed);
+        } else {
+          // Old format or corrupted — clear it
+          localStorage.removeItem(METRICAS_STORAGE_KEY);
+        }
+      }
+    } catch {
+      localStorage.removeItem(METRICAS_STORAGE_KEY);
+    }
+  }, []);
+
+  // Track container width — re-observe when sidebar toggles
+  useEffect(() => {
+    if (!gridRef.current) return;
+    const el = gridRef.current;
+    const update = () => {
+      const w = el.clientWidth - 32;
+      if (w > 100) setGridWidth(w);
+    };
+    // Delay to let sidebar transition finish
+    const timeout = setTimeout(update, 300);
+    const observer = new ResizeObserver(() => update());
+    observer.observe(el);
+    return () => { observer.disconnect(); clearTimeout(timeout); };
+  }, [sidebarOpen]);
+
+  const saveWidgets = useCallback((w: PlacedWidget[]) => {
+    setWidgets(w);
+    try { localStorage.setItem(METRICAS_STORAGE_KEY, JSON.stringify(w)); } catch { /* ignore */ }
+  }, []);
+
+  const handleLayoutChange = useCallback((newLayout: readonly LayoutItem[]) => {
+    setWidgets((prev) => {
+      const updated = prev.map((w) => {
+        const found = newLayout.find((l) => l.i === w.layoutItem.i);
+        return found ? { ...w, layoutItem: { ...found } } : w;
+      });
+      try { localStorage.setItem(METRICAS_STORAGE_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
+      return updated;
+    });
+  }, []);
+
+  const addWidget = useCallback((widgetType: WidgetType) => {
+    const COLS = 12;
+    const id = `${widgetType.id}-${Date.now()}`;
+    const w = widgetType.defaultW;
+    const h = widgetType.defaultH;
+
+    // Build occupancy grid to find first available spot
+    const occupied = new Set<string>();
+    for (const widget of widgets) {
+      const li = widget.layoutItem;
+      for (let row = li.y; row < li.y + li.h; row++) {
+        for (let col = li.x; col < li.x + li.w; col++) {
+          occupied.add(`${col},${row}`);
+        }
+      }
+    }
+
+    // Scan for first position where the new card fits within max rows
+    const MAX_ROWS = 24;
+    let placeX = 0;
+    let placeY = 0;
+    let found = false;
+
+    for (let row = 0; row <= MAX_ROWS - h; row++) {
+      for (let col = 0; col <= COLS - w; col++) {
+        let fits = true;
+        for (let dy = 0; dy < h && fits; dy++) {
+          for (let dx = 0; dx < w && fits; dx++) {
+            if (occupied.has(`${col + dx},${row + dy}`)) fits = false;
+          }
+        }
+        if (fits) {
+          placeX = col;
+          placeY = row;
+          found = true;
+          break;
+        }
+      }
+      if (found) break;
+    }
+
+    if (!found) return; // Grid is full — don't add
+
+    const newWidget: PlacedWidget = {
+      layoutItem: { i: id, x: placeX, y: placeY, w, h },
+      widgetType: widgetType.id,
+      title: widgetType.label,
+    };
+    saveWidgets([...widgets, newWidget]);
+  }, [widgets, saveWidgets]);
+
+  const removeWidget = useCallback((id: string) => {
+    saveWidgets(widgets.filter((w) => w.layoutItem.i !== id));
+  }, [widgets, saveWidgets]);
+
+  const handleClear = useCallback(() => {
+    saveWidgets([]);
+  }, [saveWidgets]);
+
+  const layout = widgets.map((w) => w.layoutItem);
+  const widgetMap = Object.fromEntries(widgets.map((w) => [w.layoutItem.i, w]));
+
   return (
-    <>
-      {/* Header */}
-      <div style={{ marginBottom: 32 }}>
-        <h1
-          style={{
-            fontSize: 28,
-            fontWeight: 700,
-            margin: 0,
-            letterSpacing: "-0.02em",
-            color: M_TEXT,
-          }}
-        >
-          Dashboard Analytics
-        </h1>
-        <p style={{ color: M_TEXT_DIM, margin: "6px 0 0", fontSize: 14 }}>
-          Resumen de rendimiento — Marzo 2026
-        </p>
-      </div>
-
-      {/* KPI CARDS */}
-      <div
+    <div style={{ display: "flex", height: "calc(100vh - 48px)", margin: "-24px" }}>
+      {/* Sidebar — Widget Palette (matches DetailSidebar: 240px, same colors) */}
+      <aside
         style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: 20,
-          marginBottom: 28,
-        }}
-      >
-        {metricasKpis.map((kpi, i) => (
-          <div
-            key={i}
-            style={{
-              background: M_CARD,
-              border: `1px solid ${M_BORDER}`,
-              borderRadius: 12,
-              padding: "20px 24px",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <div>
-              <p
-                style={{
-                  fontSize: 12,
-                  color: M_TEXT_DIM,
-                  margin: 0,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                  fontWeight: 500,
-                }}
-              >
-                {kpi.label}
-              </p>
-              <p
-                style={{
-                  fontSize: 28,
-                  fontWeight: 700,
-                  margin: "6px 0 4px",
-                  lineHeight: 1,
-                  color: M_TEXT,
-                }}
-              >
-                {kpi.value}
-              </p>
-              <span
-                style={{
-                  fontSize: 13,
-                  color: M_ACCENT,
-                  fontWeight: 600,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 3,
-                }}
-              >
-                {kpi.change.startsWith("-") ? "\u2193" : "\u2191"} {kpi.change}
-              </span>
-            </div>
-            <MetricasSparkline data={kpi.spark} />
-          </div>
-        ))}
-      </div>
-
-      {/* MIDDLE SECTION: Bar + Area */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 20,
-          marginBottom: 28,
-        }}
-      >
-        {/* Leads por Canal — Bar Chart */}
-        <div
-          style={{
-            background: M_CARD,
-            border: `1px solid ${M_BORDER}`,
-            borderRadius: 12,
-            padding: "24px",
-          }}
-        >
-          <h3
-            style={{
-              fontSize: 16,
-              fontWeight: 600,
-              margin: "0 0 20px",
-              letterSpacing: "-0.01em",
-              color: M_TEXT,
-            }}
-          >
-            Leads por Canal
-          </h3>
-          <div style={{ width: "100%", height: 280 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={metricasChannelData} barSize={36}>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke={M_GRID}
-                  vertical={false}
-                />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fill: M_TEXT_MUTED, fontSize: 12 }}
-                  axisLine={{ stroke: M_GRID }}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fill: M_TEXT_MUTED, fontSize: 12 }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <RechartsTooltip
-                  contentStyle={{
-                    background: "#252525",
-                    border: `1px solid ${M_BORDER}`,
-                    borderRadius: 8,
-                    fontSize: 13,
-                  }}
-                  cursor={{ fill: "rgba(255,255,255,0.04)" }}
-                />
-                <Bar dataKey="leads" radius={[6, 6, 0, 0]}>
-                  {metricasChannelData.map((entry, idx) => (
-                    <Cell key={idx} fill={entry.fill} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Revenue vs Gasto — Area Chart */}
-        <div
-          style={{
-            background: M_CARD,
-            border: `1px solid ${M_BORDER}`,
-            borderRadius: 12,
-            padding: "24px",
-          }}
-        >
-          <h3
-            style={{
-              fontSize: 16,
-              fontWeight: 600,
-              margin: "0 0 20px",
-              letterSpacing: "-0.01em",
-              color: M_TEXT,
-            }}
-          >
-            Revenue vs Gasto
-          </h3>
-          <div style={{ width: "100%", height: 280 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={metricasRevenueVsGasto}>
-                <defs>
-                  <linearGradient id="gradRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={M_ACCENT} stopOpacity={0.3} />
-                    <stop offset="95%" stopColor={M_ACCENT} stopOpacity={0.02} />
-                  </linearGradient>
-                  <linearGradient id="gradGasto" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke={M_GRID}
-                  vertical={false}
-                />
-                <XAxis
-                  dataKey="month"
-                  tick={{ fill: M_TEXT_MUTED, fontSize: 12 }}
-                  axisLine={{ stroke: M_GRID }}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fill: M_TEXT_MUTED, fontSize: 12 }}
-                  axisLine={false}
-                  tickLine={false}
-                  tickFormatter={(v) => `$${v / 1000}K`}
-                />
-                <RechartsTooltip content={<MetricasCustomTooltip />} />
-                <Area
-                  type="monotone"
-                  dataKey="revenue"
-                  name="Revenue"
-                  stroke={M_ACCENT}
-                  strokeWidth={2}
-                  fill="url(#gradRevenue)"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="gasto"
-                  name="Gasto"
-                  stroke="#ef4444"
-                  strokeWidth={2}
-                  fill="url(#gradGasto)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
-      {/* BOTTOM SECTION: Donut + Line */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 20,
-          marginBottom: 28,
-        }}
-      >
-        {/* Distribucion de Leads — Donut */}
-        <div
-          style={{
-            background: M_CARD,
-            border: `1px solid ${M_BORDER}`,
-            borderRadius: 12,
-            padding: "24px",
-          }}
-        >
-          <h3
-            style={{
-              fontSize: 16,
-              fontWeight: 600,
-              margin: "0 0 8px",
-              letterSpacing: "-0.01em",
-              color: M_TEXT,
-            }}
-          >
-            Distribucion de Leads por Etapa
-          </h3>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 24,
-            }}
-          >
-            <div style={{ width: 240, height: 280 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={metricasPipelineData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={70}
-                    outerRadius={100}
-                    paddingAngle={3}
-                    dataKey="value"
-                    strokeWidth={0}
-                    label={false}
-                  >
-                    {metricasPipelineData.map((entry, idx) => (
-                      <Cell key={idx} fill={entry.color} />
-                    ))}
-                    <MetricasDonutCenterLabel viewBox={{ cx: 120, cy: 140 }} />
-                  </Pie>
-                  <RechartsTooltip
-                    contentStyle={{
-                      background: "#252525",
-                      border: `1px solid ${M_BORDER}`,
-                      borderRadius: 8,
-                      fontSize: 13,
-                    }}
-                    formatter={(value: any) => [`${value}%`, ""]}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            {/* Legend */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {metricasPipelineData.map((item, i) => (
-                <div
-                  key={i}
-                  style={{ display: "flex", alignItems: "center", gap: 10 }}
-                >
-                  <div
-                    style={{
-                      width: 12,
-                      height: 12,
-                      borderRadius: 3,
-                      background: item.color,
-                      flexShrink: 0,
-                    }}
-                  />
-                  <span style={{ fontSize: 13, color: M_TEXT_DIM, minWidth: 90 }}>
-                    {item.name}
-                  </span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: M_TEXT }}>
-                    {item.value}%
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Tendencia Semanal — Line Chart */}
-        <div
-          style={{
-            background: M_CARD,
-            border: `1px solid ${M_BORDER}`,
-            borderRadius: 12,
-            padding: "24px",
-          }}
-        >
-          <h3
-            style={{
-              fontSize: 16,
-              fontWeight: 600,
-              margin: "0 0 20px",
-              letterSpacing: "-0.01em",
-              color: M_TEXT,
-            }}
-          >
-            Tendencia Semanal
-          </h3>
-          <div style={{ width: "100%", height: 280 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={metricasWeeklyTrend}>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke={M_GRID}
-                  vertical={false}
-                />
-                <XAxis
-                  dataKey="week"
-                  tick={{ fill: M_TEXT_MUTED, fontSize: 12 }}
-                  axisLine={{ stroke: M_GRID }}
-                  tickLine={false}
-                />
-                <YAxis
-                  yAxisId="left"
-                  tick={{ fill: M_TEXT_MUTED, fontSize: 12 }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  tick={{ fill: M_TEXT_MUTED, fontSize: 12 }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <RechartsTooltip
-                  contentStyle={{
-                    background: "#252525",
-                    border: `1px solid ${M_BORDER}`,
-                    borderRadius: 8,
-                    fontSize: 13,
-                  }}
-                />
-                <Line
-                  yAxisId="left"
-                  type="monotone"
-                  dataKey="leads"
-                  name="Leads"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  dot={<MetricasAIDot />}
-                  activeDot={{ r: 5, fill: "#3b82f6" }}
-                />
-                <Line
-                  yAxisId="right"
-                  type="monotone"
-                  dataKey="conversiones"
-                  name="Conversiones"
-                  stroke={M_ACCENT}
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 5, fill: M_ACCENT }}
-                />
-                <RechartsLegend
-                  wrapperStyle={{ fontSize: 12, color: M_TEXT_DIM }}
-                  iconType="circle"
-                  iconSize={8}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
-      {/* AI INSIGHT BANNER */}
-      <div
-        style={{
-          background: "linear-gradient(135deg, rgba(62,207,142,0.08) 0%, rgba(59,130,246,0.08) 100%)",
-          border: `1px solid rgba(62,207,142,0.25)`,
-          borderRadius: 12,
-          padding: "20px 28px",
+          width: sidebarOpen ? 240 : 0,
+          minWidth: sidebarOpen ? 240 : 0,
+          height: "100%",
+          borderRight: sidebarOpen ? "1px solid #2e2e2e" : "none",
+          backgroundColor: "#1c1c1c",
           display: "flex",
-          alignItems: "flex-start",
-          gap: 14,
+          flexDirection: "column",
+          flexShrink: 0,
+          overflow: "hidden",
+          transition: "width 250ms ease, min-width 250ms ease",
         }}
       >
-        <span style={{ fontSize: 24, lineHeight: 1, flexShrink: 0 }}>
-          {"\ud83e\udd16"}
+          <div className="px-5 pt-3 pb-2 border-b border-[#2e2e2e] flex items-center justify-between">
+            <h2 className="text-[15px] font-semibold text-[#ededed]">Componentes</h2>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              style={{
+                width: 24, height: 24, borderRadius: 6,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                backgroundColor: "transparent", border: "none", color: "#555",
+                cursor: "pointer", fontSize: 14,
+              }}
+              title="Cerrar panel"
+            >
+              ‹
+            </button>
+          </div>
+          <nav className="flex-1 pt-1 px-3 overflow-y-auto">
+            {AVAILABLE_WIDGETS.map((wt, idx) => {
+              // Insert section headers based on comments in the array
+              const sectionHeaders: Record<number, string> = {
+                0: "CHARTS",
+                7: "MARKETING",
+                12: "CRM & PIPELINE",
+                17: "CANALES",
+                21: "AI & INSIGHTS",
+                25: "FINANCIERO",
+              };
+              const header = sectionHeaders[idx];
+              return (
+                <React.Fragment key={wt.id}>
+                  {header && (
+                    <>
+                      {idx > 0 && <div className="h-px mx-auto my-3" style={{ backgroundColor: "#2e2e2e" }} />}
+                      <div className="flex space-x-3 mb-2 font-normal px-3">
+                        <span className="text-[11px] font-normal uppercase tracking-[0.1em] text-[#666]">
+                          {header}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                  <button
+                    onClick={() => addWidget(wt)}
+                    className="block w-full text-left text-[14px] py-[6px] px-3 transition-colors text-[#999] hover:text-[#ededed] hover:bg-[#2a2a2a] rounded-md mb-0.5"
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: "#252525", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "#666" }}>
+                        {wt.icon}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>{wt.label}</div>
+                        <div style={{ fontSize: 10, color: "#555", lineHeight: 1.2 }}>{wt.description}</div>
+                      </div>
+                    </div>
+                  </button>
+                </React.Fragment>
+              );
+            })}
+          </nav>
+        </aside>
+
+      {/* Collapsed sidebar toggle */}
+      <button
+        onClick={() => setSidebarOpen(true)}
+        style={{
+          width: sidebarOpen ? 0 : 36,
+          minWidth: sidebarOpen ? 0 : 36,
+          height: "100%",
+          backgroundColor: "#1c1c1c",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+          cursor: sidebarOpen ? "default" : "pointer",
+          border: "none",
+          borderRight: sidebarOpen ? "none" : "1px solid #2e2e2e",
+          gap: 10,
+          overflow: "hidden",
+          transition: "width 250ms ease, min-width 250ms ease, opacity 250ms ease",
+          opacity: sidebarOpen ? 0 : 1,
+          pointerEvents: sidebarOpen ? "none" : "auto",
+        }}
+        title="Abrir componentes"
+      >
+        <span style={{ fontSize: 14, color: "#555" }}>›</span>
+        <span
+          style={{
+            writingMode: "vertical-rl",
+            transform: "rotate(180deg)",
+            fontSize: 11,
+            fontWeight: 600,
+            color: "#555",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Componentes
         </span>
-        <div>
-          <p
-            style={{
-              margin: 0,
-              fontSize: 13,
-              fontWeight: 600,
-              color: M_ACCENT,
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              marginBottom: 6,
-            }}
-          >
-            Insight
-          </p>
-          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: "#cccccc" }}>
-            Tu mejor canal es{" "}
-            <span style={{ color: M_TEXT, fontWeight: 600 }}>Meta Ads</span> con CPL
-            de{" "}
-            <span style={{ color: M_ACCENT, fontWeight: 600 }}>$2.10</span>.
-            TikTok tiene el CPL mas alto (
-            <span style={{ color: "#ef4444", fontWeight: 600 }}>$8.50</span>).
-            Google tiene el mejor ROAS (
-            <span style={{ color: M_ACCENT, fontWeight: 600 }}>5.1x</span>).
-            Recomendacion:{" "}
-            <span style={{ color: M_TEXT, fontWeight: 600 }}>
-              Redistribuir 20% del budget de TikTok a Meta.
-            </span>
-          </p>
+      </button>
+
+      {/* Main grid area */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+        {/* Grid */}
+        <div ref={gridRef} style={{ flex: 1, overflow: "auto", padding: "10px 16px", minWidth: 0, position: "relative" }}>
+          {/* Floating clear button */}
+          {widgets.length > 0 && (
+            <button
+              onClick={handleClear}
+              style={{
+                position: "absolute", top: 12, right: 18, zIndex: 20,
+                display: "inline-flex", alignItems: "center", gap: 5,
+                padding: "4px 10px", borderRadius: 6, border: "1px solid #2e2e2e",
+                background: "#1c1c1c", color: "#555", fontSize: 10, cursor: "pointer",
+              }}
+            >
+              <RotateCcw size={10} />
+              Limpiar
+            </button>
+          )}
+          {widgets.length === 0 ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", flexDirection: "column", gap: 12 }}>
+              <LayoutDashboard size={40} color="#333" />
+              <p style={{ fontSize: 14, color: "#555" }}>Agrega componentes desde el panel izquierdo</p>
+              <button
+                onClick={() => setSidebarOpen(true)}
+                style={{
+                  padding: "8px 16px", borderRadius: 8, border: "1px solid #3ecf8e40",
+                  background: "#3ecf8e15", color: "#3ecf8e", fontSize: 12, fontWeight: 600, cursor: "pointer",
+                }}
+              >
+                Abrir componentes
+              </button>
+            </div>
+          ) : (
+            <GridLayout
+              layout={layout}
+              gridConfig={{
+                cols: 12,
+                rowHeight: 30,
+                margin: [14, 14] as const,
+                containerPadding: [0, 0] as const,
+                maxRows: 24,
+              }}
+              compactor={{
+                ...noCompactor,
+                allowOverlap: false,
+                preventCollision: true,
+              }}
+              dragConfig={{ enabled: true, handle: ".grid-drag-handle", bounded: true }}
+              resizeConfig={{ enabled: true, handles: ["n", "s", "e", "w", "ne", "nw", "se", "sw"] as const }}
+              width={gridWidth}
+              onLayoutChange={handleLayoutChange}
+              style={{ minHeight: 400 }}
+            >
+              {layout.map((item) => {
+                const widget = widgetMap[item.i];
+                return (
+                  <div key={item.i}>
+                    <div
+                      style={{
+                        backgroundColor: "#1c1c1c",
+                        border: "1px solid #2e2e2e",
+                        borderRadius: 10,
+                        height: "100%",
+                        display: "flex",
+                        flexDirection: "column",
+                        overflow: "hidden",
+                      }}
+                    >
+                      {/* Header */}
+                      <div
+                        className="grid-drag-handle"
+                        style={{
+                          padding: "8px 12px",
+                          borderBottom: "1px solid #2e2e2e",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          cursor: "grab",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <span style={{ fontSize: 10, fontWeight: 600, color: "#666", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                          {widget?.title || item.i}
+                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <GripVertical size={12} color="#333" />
+                          <button
+                            onClick={() => removeWidget(item.i)}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            style={{
+                              width: 18, height: 18, borderRadius: 4, border: "none",
+                              backgroundColor: "transparent", color: "#444", cursor: "pointer",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              fontSize: 12, lineHeight: 1,
+                            }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </div>
+                      {/* Body — empty placeholder */}
+                      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <span style={{ fontSize: 10, color: "#333" }}>{widget?.widgetType}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </GridLayout>
+          )}
         </div>
       </div>
-    </>
+
+      <style>{`
+        .react-grid-item.react-grid-placeholder {
+          background: #3ecf8e20 !important;
+          border: 2px dashed #3ecf8e40 !important;
+          border-radius: 10px !important;
+          opacity: 1 !important;
+        }
+        .react-grid-item > .react-resizable-handle {
+          background: none !important;
+          width: 14px !important;
+          height: 14px !important;
+        }
+        .react-grid-item > .react-resizable-handle::after {
+          border-color: #444 !important;
+          width: 6px !important;
+          height: 6px !important;
+        }
+        .react-grid-item:hover > .react-resizable-handle::after {
+          border-color: #3ecf8e !important;
+        }
+      `}</style>
+    </div>
   );
 }
 

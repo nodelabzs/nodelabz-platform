@@ -141,7 +141,7 @@ export function DashboardShell({
               onSave={handleSaveWorkflow}
             />
           ) : (
-            <div className="p-6 min-h-full">
+            <div className="p-6 h-full overflow-auto">
               <ContentRouter section={activeSection} activeItem={activeItem} />
             </div>
           )}
