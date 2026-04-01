@@ -4,6 +4,8 @@ import { prisma } from "@nodelabz/db";
 import { TRPCError } from "@trpc/server";
 import { PLAN_LIMITS, type PlanName } from "@/server/stripe/plans";
 import { buildCsvString } from "./csv-utils";
+import { fireTrigger } from "@/server/workflows/triggers";
+import { notifyNewLead } from "@/server/notifications/notify";
 
 /**
  * Returns contact usage info for a tenant relative to their plan limit.
@@ -31,6 +33,22 @@ async function getContactLimitInfo(tenantId: string) {
 
 const scoreLabelEnum = z.enum(["HOT", "WARM", "COLD"]);
 
+const advancedFiltersSchema = z.object({
+  source: z.string().optional(),
+  stage: z.string().optional(),
+  assignedTo: z.string().optional(),
+  company: z.string().optional(),
+  hasEmail: z.boolean().optional(),
+  hasPhone: z.boolean().optional(),
+  createdAfter: z.coerce.date().optional(),
+  createdBefore: z.coerce.date().optional(),
+  scoreMin: z.number().optional(),
+  scoreMax: z.number().optional(),
+}).optional();
+
+const sortByEnum = z.enum(["createdAt", "updatedAt", "firstName", "score", "company"]).optional();
+const sortOrderEnum = z.enum(["asc", "desc"]).optional();
+
 export const contactsRouter = router({
   list: tenantProcedure
     .input(
@@ -40,10 +58,13 @@ export const contactsRouter = router({
         search: z.string().optional(),
         scoreLabel: scoreLabelEnum.optional(),
         tags: z.array(z.string()).optional(),
+        filters: advancedFiltersSchema,
+        sortBy: sortByEnum,
+        sortOrder: sortOrderEnum,
       })
     )
     .query(async ({ ctx, input }) => {
-      const { page, limit, search, scoreLabel, tags } = input;
+      const { page, limit, search, scoreLabel, tags, filters, sortBy, sortOrder } = input;
       const skip = (page - 1) * limit;
 
       const where: Record<string, unknown> = {
@@ -67,12 +88,40 @@ export const contactsRouter = router({
         where.tags = { hasSome: tags };
       }
 
+      // Advanced filters
+      if (filters) {
+        if (filters.source) where.source = filters.source;
+        if (filters.stage) where.stage = filters.stage;
+        if (filters.assignedTo) where.assignedTo = filters.assignedTo;
+        if (filters.company) where.company = { contains: filters.company, mode: "insensitive" };
+        if (filters.hasEmail === true) where.email = { not: null };
+        if (filters.hasEmail === false) where.email = null;
+        if (filters.hasPhone === true) where.phone = { not: null };
+        if (filters.hasPhone === false) where.phone = null;
+
+        if (filters.createdAfter || filters.createdBefore) {
+          const createdAt: Record<string, Date> = {};
+          if (filters.createdAfter) createdAt.gte = filters.createdAfter;
+          if (filters.createdBefore) createdAt.lte = filters.createdBefore;
+          where.createdAt = createdAt;
+        }
+
+        if (filters.scoreMin !== undefined || filters.scoreMax !== undefined) {
+          const score: Record<string, number> = {};
+          if (filters.scoreMin !== undefined) score.gte = filters.scoreMin;
+          if (filters.scoreMax !== undefined) score.lte = filters.scoreMax;
+          where.score = score;
+        }
+      }
+
+      const orderBy = { [sortBy ?? "createdAt"]: sortOrder ?? "desc" };
+
       const [contacts, total] = await Promise.all([
         prisma.contact.findMany({
           where,
           skip,
           take: limit,
-          orderBy: { createdAt: "desc" },
+          orderBy,
         }),
         prisma.contact.count({ where }),
       ]);
@@ -124,7 +173,7 @@ export const contactsRouter = router({
         });
       }
 
-      return prisma.contact.create({
+      const contact = await prisma.contact.create({
         data: {
           tenantId: ctx.effectiveTenantId,
           firstName: input.firstName,
@@ -137,6 +186,21 @@ export const contactsRouter = router({
           customData: input.customData as object | undefined,
         },
       });
+
+      void fireTrigger(ctx.effectiveTenantId, "contact.created", {
+        contactId: contact.id,
+        ...input,
+      });
+
+      // Notify if the new contact is scored as HOT
+      if (contact.scoreLabel === "HOT") {
+        const name = [contact.firstName, contact.lastName].filter(Boolean).join(" ");
+        notifyNewLead(ctx.effectiveTenantId, name).catch(() => {
+          /* fire-and-forget — don't block the mutation */
+        });
+      }
+
+      return contact;
     }),
 
   update: tenantProcedure
@@ -645,4 +709,127 @@ export const contactsRouter = router({
         data: { score: input.score, scoreLabel: input.scoreLabel },
       });
     }),
+
+  // ── Saved filters ──────────────────────────────────────────────
+
+  saveFilter: tenantProcedure
+    .input(
+      z.object({
+        name: z.string().min(1).max(100),
+        filters: z.record(z.unknown()),
+        description: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const tenantId = ctx.effectiveTenantId;
+      const value = JSON.stringify({
+        filters: input.filters,
+        description: input.description,
+      });
+
+      return prisma.aiMemory.upsert({
+        where: {
+          tenantId_category_key: {
+            tenantId,
+            category: "saved_filter",
+            key: input.name,
+          },
+        },
+        create: {
+          tenantId,
+          category: "saved_filter",
+          key: input.name,
+          value,
+          source: "contacts",
+        },
+        update: { value },
+      });
+    }),
+
+  listSavedFilters: tenantProcedure.query(async ({ ctx }) => {
+    const memories = await prisma.aiMemory.findMany({
+      where: {
+        tenantId: ctx.effectiveTenantId,
+        category: "saved_filter",
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    return memories.map((m) => {
+      const parsed = JSON.parse(m.value) as {
+        filters: Record<string, unknown>;
+        description?: string;
+      };
+      return {
+        id: m.id,
+        name: m.key,
+        filters: parsed.filters,
+        description: parsed.description,
+        updatedAt: m.updatedAt,
+      };
+    });
+  }),
+
+  deleteSavedFilter: tenantProcedure
+    .input(z.object({ name: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await prisma.aiMemory.deleteMany({
+        where: {
+          tenantId: ctx.effectiveTenantId,
+          category: "saved_filter",
+          key: input.name,
+        },
+      });
+
+      if (result.count === 0) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Saved filter not found" });
+      }
+
+      return { success: true };
+    }),
+
+  // ── Filter counts / sidebar badges ─────────────────────────────
+
+  getFilterCounts: tenantProcedure.query(async ({ ctx }) => {
+    const tenantId = ctx.effectiveTenantId;
+
+    const [
+      total,
+      hotCount,
+      warmCount,
+      coldCount,
+      withEmail,
+      withPhone,
+      sourceGroups,
+    ] = await Promise.all([
+      prisma.contact.count({ where: { tenantId } }),
+      prisma.contact.count({ where: { tenantId, scoreLabel: "HOT" } }),
+      prisma.contact.count({ where: { tenantId, scoreLabel: "WARM" } }),
+      prisma.contact.count({ where: { tenantId, scoreLabel: "COLD" } }),
+      prisma.contact.count({ where: { tenantId, email: { not: null } } }),
+      prisma.contact.count({ where: { tenantId, phone: { not: null } } }),
+      prisma.contact.groupBy({
+        by: ["source"],
+        where: { tenantId },
+        _count: { id: true },
+      }),
+    ]);
+
+    return {
+      total,
+      byScoreLabel: {
+        HOT: hotCount,
+        WARM: warmCount,
+        COLD: coldCount,
+      },
+      bySource: sourceGroups.map((g) => ({
+        source: g.source ?? "unknown",
+        count: g._count.id,
+      })),
+      withEmail,
+      withoutEmail: total - withEmail,
+      withPhone,
+      withoutPhone: total - withPhone,
+    };
+  }),
 });

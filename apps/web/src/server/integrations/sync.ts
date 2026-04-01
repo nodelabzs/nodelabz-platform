@@ -1,5 +1,6 @@
 import { prisma, Prisma } from "@nodelabz/db";
 import { refreshGoogleToken } from "./google/auth";
+import { notifyIntegrationSync } from "../notifications/notify";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -142,11 +143,13 @@ export async function syncMetaAds(tenantId: string, integrationId: string): Prom
       data: { lastSyncAt: new Date(), status: "active" },
     });
 
+    await notifyIntegrationSync(tenantId, "meta_ads", true, `${syncedCount} registros sincronizados.`);
     return { success: true, synced: syncedCount };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[Meta Sync] Failed:", message);
     await prisma.integration.update({ where: { id: integrationId }, data: { status: "error" } });
+    await notifyIntegrationSync(tenantId, "meta_ads", false, message);
     return { success: false, error: message };
   }
 }
@@ -241,11 +244,13 @@ export async function syncGoogleAds(tenantId: string, integrationId: string): Pr
       data: { lastSyncAt: new Date(), status: "active" },
     });
 
+    await notifyIntegrationSync(tenantId, "google_ads", true, `${syncedCount} registros sincronizados.`);
     return { success: true, synced: syncedCount };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[Google Ads Sync] Failed:", message);
     await prisma.integration.update({ where: { id: integrationId }, data: { status: "error" } });
+    await notifyIntegrationSync(tenantId, "google_ads", false, message);
     return { success: false, error: message };
   }
 }
@@ -339,11 +344,13 @@ export async function syncGA4(tenantId: string, integrationId: string): Promise<
       data: { lastSyncAt: new Date(), status: "active" },
     });
 
+    await notifyIntegrationSync(tenantId, "ga4", true, `${syncedCount} registros sincronizados.`);
     return { success: true, synced: syncedCount };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[GA4 Sync] Failed:", message);
     await prisma.integration.update({ where: { id: integrationId }, data: { status: "error" } });
+    await notifyIntegrationSync(tenantId, "ga4", false, message);
     return { success: false, error: message };
   }
 }

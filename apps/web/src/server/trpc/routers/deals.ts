@@ -4,6 +4,8 @@ import { prisma } from "@nodelabz/db";
 import { TRPCError } from "@trpc/server";
 import { Prisma } from "@nodelabz/db";
 import { buildCsvString } from "./csv-utils";
+import { fireTrigger } from "@/server/workflows/triggers";
+import { notifyDealWon } from "@/server/notifications/notify";
 
 export const dealsRouter = router({
   list: tenantProcedure
@@ -85,6 +87,15 @@ export const dealsRouter = router({
         },
       });
 
+      void fireTrigger(ctx.effectiveTenantId, "deal.created", {
+        dealId: deal.id,
+        contactId: input.contactId,
+        title: input.title,
+        pipelineId: input.pipelineId,
+        stageId: input.stageId,
+        value: input.value,
+      });
+
       return deal;
     }),
 
@@ -124,7 +135,7 @@ export const dealsRouter = router({
         },
       });
 
-      // If stage changed, create an activity
+      // If stage changed, create an activity and fire trigger
       if (input.stageId && input.stageId !== existing.stageId) {
         await prisma.activity.create({
           data: {
@@ -137,6 +148,13 @@ export const dealsRouter = router({
             },
             createdBy: ctx.dbUser.id,
           },
+        });
+
+        void fireTrigger(ctx.effectiveTenantId, "deal.stage_changed", {
+          dealId: existing.id,
+          contactId: existing.contactId,
+          fromStage: existing.stageId,
+          toStage: input.stageId,
         });
       }
 
@@ -189,6 +207,23 @@ export const dealsRouter = router({
           createdBy: ctx.dbUser.id,
         },
       });
+
+      void fireTrigger(
+        ctx.effectiveTenantId,
+        input.won ? "deal.won" : "deal.lost",
+        {
+          dealId: existing.id,
+          contactId: existing.contactId,
+        }
+      );
+
+      // Notify on deal won
+      if (input.won) {
+        const dealValue = existing.value ? Number(existing.value) : null;
+        notifyDealWon(ctx.effectiveTenantId, existing.title, dealValue).catch(() => {
+          /* fire-and-forget — don't block the mutation */
+        });
+      }
 
       return deal;
     }),
