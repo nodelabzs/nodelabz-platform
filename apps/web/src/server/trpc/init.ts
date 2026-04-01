@@ -3,6 +3,7 @@ import superjson from "superjson";
 import { ZodError } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { findUserBySupabaseId } from "@/server/auth/provision";
+import { prisma } from "@nodelabz/db";
 
 export async function createTRPCContext({ req }: { req: Request }) {
   const supabase = await createClient();
@@ -55,11 +56,28 @@ export const tenantProcedure = protectedProcedure.use(async ({ ctx, next }) => {
     ? dbUser.activeTenantId
     : dbUser.tenantId;
 
+  // Check trial expiration: flag it if trial has passed and plan is still INICIO
+  let trialExpired = false;
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: effectiveTenantId },
+    select: { plan: true, trialEndsAt: true },
+  });
+
+  if (
+    tenant &&
+    tenant.plan === "INICIO" &&
+    tenant.trialEndsAt &&
+    new Date() > tenant.trialEndsAt
+  ) {
+    trialExpired = true;
+  }
+
   return next({
     ctx: {
       ...ctx,
       dbUser,
       effectiveTenantId,
+      trialExpired,
     },
   });
 });

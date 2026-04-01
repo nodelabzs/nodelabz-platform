@@ -2,6 +2,31 @@ import { z } from "zod";
 import { router, tenantProcedure } from "../init";
 import { prisma } from "@nodelabz/db";
 import { TRPCError } from "@trpc/server";
+import { PLAN_LIMITS, type PlanName } from "@/server/stripe/plans";
+
+/**
+ * Returns contact usage info for a tenant relative to their plan limit.
+ */
+async function getContactLimitInfo(tenantId: string) {
+  const [tenant, currentCount] = await Promise.all([
+    prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { plan: true },
+    }),
+    prisma.contact.count({ where: { tenantId } }),
+  ]);
+
+  const plan = (tenant?.plan as PlanName) ?? "INICIO";
+  const limits = PLAN_LIMITS[plan] ?? PLAN_LIMITS.INICIO;
+  const unlimited = limits.maxContacts === -1;
+
+  return {
+    current: currentCount,
+    limit: limits.maxContacts,
+    remaining: unlimited ? Infinity : Math.max(0, limits.maxContacts - currentCount),
+    unlimited,
+  };
+}
 
 const scoreLabelEnum = z.enum(["HOT", "WARM", "COLD"]);
 
@@ -89,6 +114,15 @@ export const contactsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const limitInfo = await getContactLimitInfo(ctx.effectiveTenantId);
+
+      if (!limitInfo.unlimited && limitInfo.remaining <= 0) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: `Has alcanzado el limite de contactos de tu plan (${limitInfo.limit}). Actualiza tu plan para agregar mas.`,
+        });
+      }
+
       return prisma.contact.create({
         data: {
           tenantId: ctx.effectiveTenantId,
@@ -182,11 +216,27 @@ export const contactsRouter = router({
         existingContacts.map((c) => c.email).filter(Boolean)
       );
 
-      const toCreate = input.contacts.filter(
+      let toCreate = input.contacts.filter(
         (c) => !c.email || !existingEmailSet.has(c.email)
       );
 
       const skipped = input.contacts.length - toCreate.length;
+
+      // Enforce contact limit: cap import to remaining capacity
+      const limitInfo = await getContactLimitInfo(tenantId);
+      let capped = 0;
+
+      if (!limitInfo.unlimited && limitInfo.remaining <= 0) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: `Has alcanzado el limite de contactos de tu plan (${limitInfo.limit}). Actualiza tu plan para agregar mas.`,
+        });
+      }
+
+      if (!limitInfo.unlimited && toCreate.length > limitInfo.remaining) {
+        capped = toCreate.length - limitInfo.remaining;
+        toCreate = toCreate.slice(0, limitInfo.remaining);
+      }
 
       if (toCreate.length > 0) {
         await prisma.contact.createMany({
@@ -203,7 +253,7 @@ export const contactsRouter = router({
         });
       }
 
-      return { imported: toCreate.length, skipped };
+      return { imported: toCreate.length, skipped, capped };
     }),
 
   parseCSV: tenantProcedure
@@ -354,11 +404,27 @@ export const contactsRouter = router({
         existingContacts.map((c) => c.email).filter(Boolean)
       );
 
-      const toCreate = mappedContacts.filter(
+      let toCreate = mappedContacts.filter(
         (c) => !c.email || !existingEmailSet.has(c.email)
       );
 
       const skipped = mappedContacts.length - toCreate.length;
+
+      // Enforce contact limit: cap import to remaining capacity
+      const limitInfo = await getContactLimitInfo(tenantId);
+      let capped = 0;
+
+      if (!limitInfo.unlimited && limitInfo.remaining <= 0) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: `Has alcanzado el limite de contactos de tu plan (${limitInfo.limit}). Actualiza tu plan para agregar mas.`,
+        });
+      }
+
+      if (!limitInfo.unlimited && toCreate.length > limitInfo.remaining) {
+        capped = toCreate.length - limitInfo.remaining;
+        toCreate = toCreate.slice(0, limitInfo.remaining);
+      }
 
       if (toCreate.length > 0) {
         await prisma.contact.createMany({
@@ -378,6 +444,7 @@ export const contactsRouter = router({
       return {
         imported: toCreate.length,
         skipped,
+        capped,
         errors,
       };
     }),

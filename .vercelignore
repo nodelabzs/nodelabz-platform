@@ -1,0 +1,9 @@
+.git
+.next
+.turbo
+node_modules
+apps/workers
+apps/web/.next
+certs
+certificates
+*.md

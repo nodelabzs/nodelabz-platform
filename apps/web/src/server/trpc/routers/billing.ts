@@ -180,15 +180,25 @@ export const billingRouter = router({
       where: { tenantId: ctx.effectiveTenantId },
     });
 
+    const contactsUnlimited = limits.maxContacts === -1;
+    const emailsUnlimited = limits.maxEmails === -1;
+
     return {
       contacts: {
         used: contactCount,
         limit: limits.maxContacts,
+        remaining: contactsUnlimited
+          ? -1
+          : Math.max(0, limits.maxContacts - contactCount),
+        unlimited: contactsUnlimited,
       },
       emails: {
         used: 0, // TODO: track email sends
         limit: limits.maxEmails,
+        remaining: emailsUnlimited ? -1 : limits.maxEmails,
+        unlimited: emailsUnlimited,
       },
+      plan,
       features: {
         aiTier: limits.aiTier,
         mediaGeneration: limits.mediaGeneration,

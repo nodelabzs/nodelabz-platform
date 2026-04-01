@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { prisma } from "@nodelabz/db";
 import { router, tenantProcedure } from "../init";
 import { applyMergeTags } from "@/server/email/resend";
+import { sendEmail } from "@/server/email/ses";
 
 export const emailCampaignsRouter = router({
   /**
@@ -137,26 +138,37 @@ export const emailCampaignsRouter = router({
         data: { status: "sending" },
       });
 
-      // For each contact, prepare the personalized HTML
-      // (actual sending is via the send-email worker / Resend integration)
+      // For each contact, prepare and send the personalized email via SES
       const baseHtml = template.html || "";
-      const emailsToSend = contacts
-        .filter((c) => c.email)
-        .map((c) => {
-          const mergeFields: Record<string, string> = {
-            firstName: c.firstName || "",
-            lastName: c.lastName || "",
-            nombre: c.firstName || "",
-            apellido: c.lastName || "",
-            email: c.email || "",
-            empresa: c.company || "",
-          };
-          return {
-            contactId: c.id,
-            to: c.email!,
-            html: applyMergeTags(baseHtml, mergeFields),
-          };
-        });
+      const subject = template.subject || campaign.name;
+      const eligibleContacts = contacts.filter((c) => c.email);
+
+      let sent = 0;
+      let failed = 0;
+
+      for (const c of eligibleContacts) {
+        const mergeFields: Record<string, string> = {
+          firstName: c.firstName || "",
+          lastName: c.lastName || "",
+          nombre: c.firstName || "",
+          apellido: c.lastName || "",
+          email: c.email || "",
+          empresa: c.company || "",
+        };
+
+        try {
+          const personalHtml = applyMergeTags(baseHtml, mergeFields);
+          const personalSubject = applyMergeTags(subject, mergeFields);
+          await sendEmail(c.email!, personalSubject, personalHtml);
+          sent++;
+        } catch (error) {
+          console.error(
+            `[Campaign ${campaign.id}] Failed to send to ${c.email}:`,
+            error instanceof Error ? error.message : error
+          );
+          failed++;
+        }
+      }
 
       // Update campaign as sent with stats
       await prisma.emailCampaign.update({
@@ -165,7 +177,8 @@ export const emailCampaignsRouter = router({
           status: "sent",
           sentAt: new Date(),
           stats: {
-            sent: emailsToSend.length,
+            sent,
+            failed,
             delivered: 0,
             opened: 0,
             clicked: 0,
@@ -176,7 +189,9 @@ export const emailCampaignsRouter = router({
 
       return {
         campaignId: campaign.id,
-        contactCount: emailsToSend.length,
+        contactCount: eligibleContacts.length,
+        sent,
+        failed,
         status: "sent",
       };
     }),
