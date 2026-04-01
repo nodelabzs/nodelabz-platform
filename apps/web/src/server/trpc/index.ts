@@ -20,6 +20,7 @@ import { whatsappRouter } from "./routers/whatsapp";
 import { notificationsRouter } from "./routers/notifications";
 import { reportsRouter } from "./routers/reports";
 import { dashboardRouter } from "./routers/dashboard";
+import { tenantRouter } from "./routers/tenant";
 
 export const appRouter = router({
   health: publicProcedure.query(() => ({ status: "ok" })),
@@ -43,6 +44,7 @@ export const appRouter = router({
   notifications: notificationsRouter,
   reports: reportsRouter,
   dashboard: dashboardRouter,
+  tenant: tenantRouter,
 });
 
 export type AppRouter = typeof appRouter;

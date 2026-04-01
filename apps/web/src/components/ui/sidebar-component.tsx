@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   LayoutDashboard,
   Users,
@@ -13,14 +13,19 @@ import {
   Plug,
   Settings,
   Sparkles,
+  Lock,
 } from "lucide-react";
 import type { Permissions } from "@nodelabz/shared-types";
+import { usePlan } from "@/hooks/use-plan";
+import { UpgradeModal } from "@/components/ui/upgrade-modal";
 
 interface NavItem {
   id: string;
   icon: React.ReactNode;
   label: string;
   permission?: keyof Permissions;
+  /** If set, this nav item requires the given feature to be accessible on the current plan */
+  gatedFeature?: string;
 }
 
 interface DetailItem {
@@ -45,7 +50,7 @@ const navItems: NavItem[] = [
   { id: "email", icon: <Mail size={18} />, label: "Email", permission: "campaigns" },
   { id: "whatsapp", icon: <MessageCircle size={18} />, label: "WhatsApp", permission: "campaigns" },
   { id: "social", icon: <Share2 size={18} />, label: "Social", permission: "campaigns" },
-  { id: "automations", icon: <Workflow size={18} />, label: "Automatizaciones", permission: "campaigns" },
+  { id: "automations", icon: <Workflow size={18} />, label: "Automatizaciones", permission: "campaigns", gatedFeature: "workflows" },
   { id: "reports", icon: <BarChart3 size={18} />, label: "Reportes", permission: "reports" },
   { id: "integrations", icon: <Plug size={18} />, label: "Integraciones", permission: "integrations" },
 ];
@@ -148,6 +153,13 @@ export function IconNavigation({
   isSuperAdmin?: boolean;
   permissions?: Permissions;
 }) {
+  const { canAccess, requiredPlanFor, isTrialExpired } = usePlan();
+  const [upgradeModal, setUpgradeModal] = useState<{
+    open: boolean;
+    feature: string;
+    requiredPlan: string;
+  }>({ open: false, feature: "", requiredPlan: "" });
+
   // Filter nav items by permissions
   const visibleItems = navItems.filter((item) => {
     if (isSuperAdmin) return true; // Super Admins see everything
@@ -157,19 +169,51 @@ export function IconNavigation({
     return perm !== "none";
   });
 
+  const handleNavClick = (item: NavItem) => {
+    // Super admins bypass plan gating
+    if (isSuperAdmin || !item.gatedFeature) {
+      onSectionChange(item.id);
+      return;
+    }
+
+    if (!canAccess(item.gatedFeature)) {
+      const required = requiredPlanFor(item.gatedFeature);
+      setUpgradeModal({
+        open: true,
+        feature: item.gatedFeature,
+        requiredPlan: required ?? "CRECIMIENTO",
+      });
+      return;
+    }
+
+    onSectionChange(item.id);
+  };
+
   return (
+    <>
+      <UpgradeModal
+        open={upgradeModal.open}
+        onClose={() => setUpgradeModal({ open: false, feature: "", requiredPlan: "" })}
+        feature={upgradeModal.feature}
+        requiredPlan={upgradeModal.requiredPlan}
+        isTrialExpired={isTrialExpired}
+      />
     <aside className="flex flex-col items-center py-2 w-[48px] h-full border-r border-[#2e2e2e] flex-shrink-0" style={{ backgroundColor: '#1c1c1c' }}>
       <div className="flex flex-col gap-[2px] w-full items-center px-1">
-        {visibleItems.map((item) => (
+        {visibleItems.map((item) => {
+          const isLocked = !isSuperAdmin && !!item.gatedFeature && !canAccess(item.gatedFeature);
+          return (
           <button
             key={item.id}
             type="button"
-            onClick={() => onSectionChange(item.id)}
-            title={item.label}
+            onClick={() => handleNavClick(item)}
+            title={isLocked ? `${item.label} (requiere plan superior)` : item.label}
             className={`relative flex items-center justify-center w-[38px] h-[38px] rounded-md transition-colors ${
               activeSection === item.id
                 ? "text-[#ededed]"
-                : "text-[#666] hover:text-[#999] hover:bg-[#2a2a2a]"
+                : isLocked
+                  ? "text-[#555] hover:text-[#777] hover:bg-[#2a2a2a]"
+                  : "text-[#666] hover:text-[#999] hover:bg-[#2a2a2a]"
             }`}
             style={activeSection === item.id ? { backgroundColor: '#2a2a2a' } : {}}
           >
@@ -177,8 +221,14 @@ export function IconNavigation({
               <div className="absolute left-[-4px] top-1/2 -translate-y-1/2 w-[3px] h-[20px] rounded-r-sm" style={{ backgroundColor: '#3ecf8e' }} />
             )}
             {item.icon}
+            {isLocked && (
+              <div className="absolute -top-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full" style={{ backgroundColor: '#3ecf8e' }}>
+                <Lock size={8} className="text-[#171717]" />
+              </div>
+            )}
           </button>
-        ))}
+          );
+        })}
       </div>
       <div className="flex-1" />
       <div className="flex flex-col gap-[2px] w-full items-center px-1 pb-1">
@@ -218,6 +268,7 @@ export function IconNavigation({
         </button>
       </div>
     </aside>
+    </>
   );
 }
 
