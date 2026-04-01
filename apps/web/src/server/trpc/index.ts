@@ -19,6 +19,7 @@ import { sequencesRouter } from "./routers/sequences";
 import { whatsappRouter } from "./routers/whatsapp";
 import { notificationsRouter } from "./routers/notifications";
 import { reportsRouter } from "./routers/reports";
+import { dashboardRouter } from "./routers/dashboard";
 
 export const appRouter = router({
   health: publicProcedure.query(() => ({ status: "ok" })),
@@ -41,6 +42,7 @@ export const appRouter = router({
   whatsapp: whatsappRouter,
   notifications: notificationsRouter,
   reports: reportsRouter,
+  dashboard: dashboardRouter,
 });
 
 export type AppRouter = typeof appRouter;

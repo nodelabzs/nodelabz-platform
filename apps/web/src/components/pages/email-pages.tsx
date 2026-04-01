@@ -807,6 +807,46 @@ export function EditorEmailPage() {
   const [subject, setSubject] = useState(
     "Ofertas exclusivas para ti, {{nombre}}"
   );
+  const [aiGenerating, setAiGenerating] = useState(false);
+
+  async function handleAiGenerate() {
+    setAiGenerating(true);
+    try {
+      const resp = await fetch("/api/ai/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "email",
+          context: `Email subject: "${subject}". Generate email body content in Spanish for a marketing email.`,
+          language: "es",
+          tone: "professional",
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.content) {
+          // Update the first text block with AI-generated content
+          setBlocks((prev) => {
+            const textBlockIdx = prev.findIndex((b) => b.type === "text");
+            if (textBlockIdx !== -1) {
+              const block = prev[textBlockIdx]!;
+              const updated = [...prev];
+              updated[textBlockIdx] = {
+                id: block.id,
+                type: block.type,
+                content: { ...block.content, text: data.content },
+              };
+              return updated;
+            }
+            return prev;
+          });
+        }
+      }
+    } catch {
+      // Silent fail for MVP
+    }
+    setAiGenerating(false);
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -925,9 +965,13 @@ export function EditorEmailPage() {
 
         {/* Actions */}
         <div className="flex items-center gap-2">
-          <button className="flex items-center gap-1.5 rounded-md border border-[#3ecf8e]/40 bg-[#3ecf8e]/10 px-3 py-1.5 text-sm text-[#3ecf8e] hover:bg-[#3ecf8e]/20 transition-colors">
+          <button
+            onClick={handleAiGenerate}
+            disabled={aiGenerating}
+            className="flex items-center gap-1.5 rounded-md border border-[#3ecf8e]/40 bg-[#3ecf8e]/10 px-3 py-1.5 text-sm text-[#3ecf8e] hover:bg-[#3ecf8e]/20 transition-colors disabled:opacity-50"
+          >
             <Sparkles size={14} />
-            Generar con IA
+            {aiGenerating ? "Generando..." : "Generar con IA"}
           </button>
           <button
             disabled

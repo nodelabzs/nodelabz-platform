@@ -381,76 +381,55 @@ export function FormBuilderPage() {
   const activeField = fields.find((f) => f.id === activeId);
 
   return (
-    <div className="flex flex-col" style={{ height: "calc(100vh - 180px)", background: "#171717", color: "#ededed" }}>
-      {/* ============================================================ */}
-      {/*  TOP BAR                                                      */}
-      {/* ============================================================ */}
-      <header
-        className="flex items-center justify-between border-b px-5 py-3"
-        style={{ borderColor: "#2e2e2e", background: "#1c1c1c" }}
-      >
-        <div className="flex items-center gap-4">
-          <h1 className="text-[15px] font-bold tracking-tight" style={{ color: "#3ecf8e" }}>
-            Form Builder
-          </h1>
-          <div className="h-5 w-px" style={{ background: "#2e2e2e" }} />
-          <input
-            value={formName}
-            onChange={(e) => setFormName(e.target.value)}
-            className="bg-transparent text-[13px] font-medium outline-none w-[340px]"
-            style={{ color: "#ededed" }}
-          />
-        </div>
+    <>
+      {/* ====== HEADER BAR ====== */}
+      <div className="flex items-center gap-4 mb-4">
+        <h1 className="text-base font-semibold tracking-tight whitespace-nowrap text-[#ededed]">
+          Form Builder
+        </h1>
+
+        <div className="mx-2 h-5 w-px bg-[#2e2e2e]" />
+
+        <input
+          value={formName}
+          onChange={(e) => setFormName(e.target.value)}
+          className="flex-1 rounded-md border border-[#2e2e2e] bg-[#232323] px-3 py-1.5 text-sm text-[#ededed] outline-none focus:border-[#3ecf8e]/60 transition-colors"
+        />
+
+        <div className="mx-2 h-5 w-px bg-[#2e2e2e]" />
+
+        {/* Actions */}
         <div className="flex items-center gap-2">
-          {/* Conditional Logic toggle */}
-          <div className="flex items-center gap-2 mr-3">
-            <span className="text-[12px]" style={{ color: "#888" }}>
-              Logica Condicional
-            </span>
+          <div className="flex items-center gap-2 mr-1">
+            <span className="text-[12px] text-[#888]">Logica</span>
             <button
               onClick={() => setConditionalLogicOn(!conditionalLogicOn)}
               className="relative h-5 w-9 rounded-full transition-colors"
-              style={{
-                background: conditionalLogicOn ? "#3ecf8e" : "#444",
-              }}
+              style={{ background: conditionalLogicOn ? "#3ecf8e" : "#444" }}
             >
               <span
                 className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform"
-                style={{
-                  left: conditionalLogicOn ? "18px" : "2px",
-                }}
+                style={{ left: conditionalLogicOn ? "18px" : "2px" }}
               />
             </button>
           </div>
-
-          <button
-            className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[12px] font-medium transition-colors hover:bg-[#2a2a2a]"
-            style={{ borderColor: "#2e2e2e", color: "#ccc" }}
-          >
+          <button className="flex items-center gap-1.5 rounded-md border border-[#2e2e2e] px-3 py-1.5 text-[12px] text-[#ccc] hover:bg-[#2a2a2a] transition-colors">
             <Eye size={14} />
-            Vista Previa
+            Preview
           </button>
-          <button
-            className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[12px] font-medium transition-colors hover:bg-[#2a2a2a]"
-            style={{ borderColor: "#2e2e2e", color: "#ccc" }}
-          >
+          <button className="flex items-center gap-1.5 rounded-md border border-[#2e2e2e] px-3 py-1.5 text-[12px] text-[#ccc] hover:bg-[#2a2a2a] transition-colors">
             <Send size={14} />
             Publicar
           </button>
-          <button
-            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold transition-colors"
-            style={{ background: "#3ecf8e", color: "#111" }}
-          >
+          <button className="flex items-center gap-1.5 rounded-md border border-[#3ecf8e]/40 bg-[#3ecf8e]/10 px-3 py-1.5 text-[12px] text-[#3ecf8e] hover:bg-[#3ecf8e]/20 transition-colors">
             <Sparkles size={14} />
             Generar con IA
           </button>
         </div>
-      </header>
+      </div>
 
-      {/* ============================================================ */}
-      {/*  MAIN THREE-COLUMN LAYOUT                                     */}
-      {/* ============================================================ */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* ====== MAIN THREE-COLUMN LAYOUT ====== */}
+      <div className="flex overflow-hidden rounded-lg border border-[#2e2e2e]" style={{ height: "calc(100vh - 180px)" }}>
         {/* ---------------------------------------------------------- */}
         {/*  LEFT PANEL — Campos Disponibles                            */}
         {/* ---------------------------------------------------------- */}
@@ -907,6 +886,6 @@ export function FormBuilderPage() {
           )}
         </aside>
       </div>
-    </div>
+    </>
   );
 }

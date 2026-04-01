@@ -119,8 +119,8 @@ export const billingRouter = router({
         customer: customerId,
         mode: "subscription",
         line_items: [{ price: priceId, quantity: 1 }],
-        success_url: `${baseUrl}/settings/billing?success=true`,
-        cancel_url: `${baseUrl}/settings/billing?canceled=true`,
+        success_url: `${baseUrl}/dashboard?billing=success`,
+        cancel_url: `${baseUrl}/dashboard?billing=canceled`,
         metadata: { tenantId: tenant.id, plan: input.plan },
       });
 
@@ -154,7 +154,7 @@ export const billingRouter = router({
 
     const session = await stripe.billingPortal.sessions.create({
       customer: tenant.stripeCustomerId,
-      return_url: `${baseUrl}/settings/billing`,
+      return_url: `${baseUrl}/dashboard`,
     });
 
     return { url: session.url };
@@ -196,5 +196,60 @@ export const billingRouter = router({
         requiresApproval: limits.requiresApproval,
       },
     };
+  }),
+
+  /**
+   * Sync plan from Stripe subscription (fallback for when webhooks don't reach local dev).
+   * Called after returning from Stripe checkout.
+   */
+  syncPlan: tenantProcedure.mutation(async ({ ctx }) => {
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: ctx.effectiveTenantId },
+      select: { stripeCustomerId: true, plan: true },
+    });
+
+    if (!tenant?.stripeCustomerId) {
+      return { plan: tenant?.plan ?? "INICIO", synced: false };
+    }
+
+    try {
+      // Get the customer's active subscription from Stripe
+      const subscriptions = await stripe.subscriptions.list({
+        customer: tenant.stripeCustomerId,
+        status: "active",
+        limit: 1,
+      });
+
+      const sub = subscriptions.data[0];
+      if (!sub) {
+        return { plan: tenant.plan, synced: false };
+      }
+
+      const priceId = sub.items.data[0]?.price?.id;
+      if (!priceId) {
+        return { plan: tenant.plan, synced: false };
+      }
+
+      // Reverse-lookup plan from price ID
+      let newPlan: string | null = null;
+      for (const [plan, id] of Object.entries(PLAN_PRICES)) {
+        if (id === priceId) {
+          newPlan = plan;
+          break;
+        }
+      }
+
+      if (newPlan && newPlan !== tenant.plan) {
+        await prisma.tenant.update({
+          where: { id: ctx.effectiveTenantId },
+          data: { plan: newPlan as "INICIO" | "CRECIMIENTO" | "PROFESIONAL" | "AGENCIA" },
+        });
+        return { plan: newPlan, synced: true };
+      }
+
+      return { plan: tenant.plan, synced: false };
+    } catch {
+      return { plan: tenant.plan, synced: false };
+    }
   }),
 });

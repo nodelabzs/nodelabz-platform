@@ -232,6 +232,45 @@ export function HomePage() {
   const { data: integrations, isLoading: integrationsLoading } = trpc.integrations.list.useQuery();
   const { data: healthScore } = trpc.healthScore.getCurrent.useQuery();
   const { data: usage, isLoading: usageLoading } = trpc.billing.getUsage.useQuery();
+  const [showPlans, setShowPlans] = useState(false);
+  const [billingSuccess, setBillingSuccess] = useState(false);
+
+  const utils = trpc.useUtils();
+
+  const syncPlanMutation = trpc.billing.syncPlan.useMutation({
+    onSuccess: () => {
+      utils.auth.getSession.invalidate();
+      utils.billing.getSubscription.invalidate();
+      utils.billing.getUsage.invalidate();
+    },
+  });
+
+  // Show success banner and sync plan after Stripe checkout redirect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("billing") === "success") {
+      setBillingSuccess(true);
+      window.history.replaceState({}, "", "/dashboard");
+
+      // Sync plan from Stripe (works even without webhooks)
+      syncPlanMutation.mutate();
+      // Also refetch after a delay in case webhook processes
+      const t1 = setTimeout(() => {
+        utils.auth.getSession.invalidate();
+        utils.billing.getSubscription.invalidate();
+        utils.billing.getUsage.invalidate();
+      }, 3000);
+      const t2 = setTimeout(() => setBillingSuccess(false), 8000);
+      return () => { clearTimeout(t1); clearTimeout(t2); };
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const checkoutMutation = trpc.billing.createCheckout.useMutation({
+    onSuccess: (data) => { window.location.href = data.url; },
+  });
+  const portalMutation = trpc.billing.createPortalSession.useMutation({
+    onSuccess: (data) => { window.location.href = data.url; },
+  });
 
   // ── Derived values ──
   const contactCount = contactsData?.total ?? 0;
@@ -358,6 +397,18 @@ export function HomePage() {
 
   return (
     <>
+      {/* ── Billing success banner ── */}
+      {billingSuccess && (
+        <div className="rounded-lg border border-[#3ecf8e]/30 px-4 py-3 mb-4 flex items-center gap-3" style={{ backgroundColor: "#1a2a1e" }}>
+          <div className="w-6 h-6 rounded-full bg-[#3ecf8e]/20 flex items-center justify-center"><span className="text-[#3ecf8e] text-[14px]">✓</span></div>
+          <div className="flex-1">
+            <p className="text-[13px] font-medium text-[#3ecf8e]">Suscripcion activada exitosamente</p>
+            <p className="text-[11px] text-[#888]">Tu plan ha sido actualizado. Los cambios ya estan activos.</p>
+          </div>
+          <button onClick={() => setBillingSuccess(false)} className="text-[#666] hover:text-[#ccc]"><X size={16} /></button>
+        </div>
+      )}
+
       {/* ── Project header ── */}
       <div className="flex items-center gap-3 mb-5">
         <h1 className="text-[24px] font-semibold text-[#ededed]">{tenantName}</h1>
@@ -365,7 +416,7 @@ export function HomePage() {
           className="text-[10px] font-semibold uppercase tracking-wider px-2 py-[3px] rounded"
           style={{ backgroundColor: "#3ecf8e20", color: "#3ecf8e" }}
         >
-          Inicio
+          {planLabels[planName] ?? planName}
         </span>
         {healthScore && (
           <span
@@ -437,7 +488,10 @@ export function HomePage() {
               </div>
             ))}
           </div>
-          <button className="w-full mt-3 text-[12px] text-center py-2 rounded-md border border-[#333] text-[#ccc] hover:border-[#3ecf8e]/40 hover:text-[#ededed] transition-colors">
+          <button
+            onClick={() => setShowPlans(true)}
+            className="w-full mt-3 text-[12px] text-center py-2 rounded-md border border-[#333] text-[#ccc] hover:border-[#3ecf8e]/40 hover:text-[#ededed] transition-colors"
+          >
             Ver planes
           </button>
         </div>
@@ -600,18 +654,196 @@ export function HomePage() {
           </div>
         </div>
       </div>
+
+      {/* Plan selection modal */}
+      {showPlans && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowPlans(false)} />
+          <div className="relative w-[90vw] max-w-4xl rounded-2xl border border-[#2e2e2e] p-8" style={{ backgroundColor: "#1a1a1a" }}>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-[20px] font-bold text-[#ededed]">Elige tu plan</h2>
+                <p className="text-[13px] text-[#888] mt-1">Plan actual: <Badge text={planLabels[planName] ?? planName} color="#3ecf8e" /></p>
+              </div>
+              <button onClick={() => setShowPlans(false)} className="text-[#666] hover:text-[#ccc]"><X size={20} /></button>
+            </div>
+            <div className="grid grid-cols-4 gap-4">
+              {([
+                { key: "INICIO" as const, name: "Inicio", price: "$79", contacts: "500", emails: "5,000", ai: "Haiku", media: false, workflows: false, popular: false },
+                { key: "CRECIMIENTO" as const, name: "Crecimiento", price: "$199", contacts: "5,000", emails: "25,000", ai: "Sonnet", media: false, workflows: true, popular: true },
+                { key: "PROFESIONAL" as const, name: "Profesional", price: "$399", contacts: "25,000", emails: "100,000", ai: "Opus", media: true, workflows: true, popular: false },
+                { key: "AGENCIA" as const, name: "Agencia", price: "$799", contacts: "Ilimitados", emails: "Ilimitados", ai: "Opus", media: true, workflows: true, popular: false },
+              ]).map((plan) => {
+                const isCurrent = planName === plan.key;
+                return (
+                  <div key={plan.key} className={`rounded-xl border p-5 flex flex-col ${plan.popular ? "border-[#3ecf8e]/50" : "border-[#2e2e2e]"}`} style={{ backgroundColor: isCurrent ? "#1e2a22" : "#1e1e1e" }}>
+                    {plan.popular && <Badge text="Popular" color="#3ecf8e" />}
+                    <h3 className="text-[16px] font-semibold text-[#ededed] mt-1">{plan.name}</h3>
+                    <div className="flex items-baseline gap-1 mt-2 mb-4">
+                      <span className="text-[28px] font-bold text-[#ededed]">{plan.price}</span>
+                      <span className="text-[12px] text-[#888]">/mes</span>
+                    </div>
+                    <div className="space-y-2 text-[12px] flex-1">
+                      <div className="flex items-center gap-2 text-[#ccc]"><span className="text-[#3ecf8e]">✓</span> {plan.contacts} contactos</div>
+                      <div className="flex items-center gap-2 text-[#ccc]"><span className="text-[#3ecf8e]">✓</span> {plan.emails} emails/mes</div>
+                      <div className="flex items-center gap-2 text-[#ccc]"><span className="text-[#3ecf8e]">✓</span> AI {plan.ai}</div>
+                      <div className={`flex items-center gap-2 ${plan.workflows ? "text-[#ccc]" : "text-[#555]"}`}><span className={plan.workflows ? "text-[#3ecf8e]" : "text-[#555]"}>✓</span> Workflows</div>
+                      <div className={`flex items-center gap-2 ${plan.media ? "text-[#ccc]" : "text-[#555]"}`}><span className={plan.media ? "text-[#3ecf8e]" : "text-[#555]"}>✓</span> Media generation</div>
+                    </div>
+                    {isCurrent ? (
+                      <button
+                        onClick={() => portalMutation.mutate()}
+                        disabled={portalMutation.isPending}
+                        className="mt-4 text-[12px] py-2.5 rounded-lg border border-[#3ecf8e]/40 text-[#3ecf8e] w-full hover:bg-[#3ecf8e]/10 transition-colors"
+                      >
+                        Gestionar plan
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => checkoutMutation.mutate({ plan: plan.key })}
+                        disabled={checkoutMutation.isPending}
+                        className="mt-4 text-[12px] py-2.5 rounded-lg font-medium w-full disabled:opacity-50 transition-colors"
+                        style={{ backgroundColor: plan.popular ? "#3ecf8e" : "#ededed", color: "#000" }}
+                      >
+                        {checkoutMutation.isPending ? "Redirigiendo..." : "Seleccionar"}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
 
+// ── Health Score Radial Gauge ──
+function HealthGauge({ score, color, size = 180 }: { score: number; color: string; size?: number }) {
+  const radius = (size - 20) / 2;
+  const circumference = 2 * Math.PI * radius * 0.75; // 270 degrees
+  const strokeDashoffset = circumference - (score / 100) * circumference;
+  const center = size / 2;
+
+  return (
+    <div className="relative" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        {/* Background arc */}
+        <circle
+          cx={center}
+          cy={center}
+          r={radius}
+          fill="none"
+          stroke="#2a2a2a"
+          strokeWidth={10}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference * 0.25}
+          transform={`rotate(135 ${center} ${center})`}
+        />
+        {/* Score arc */}
+        <circle
+          cx={center}
+          cy={center}
+          r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth={10}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset + circumference * 0.25}
+          transform={`rotate(135 ${center} ${center})`}
+          style={{ transition: "stroke-dashoffset 1s ease-out" }}
+        />
+        {/* Glow effect */}
+        <circle
+          cx={center}
+          cy={center}
+          r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth={10}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset + circumference * 0.25}
+          transform={`rotate(135 ${center} ${center})`}
+          opacity={0.2}
+          filter="blur(6px)"
+          style={{ transition: "stroke-dashoffset 1s ease-out" }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-[40px] font-bold text-[#ededed] leading-none">{score}</span>
+        <span className="text-[11px] text-[#666] mt-1">de 100</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Health Score Mini Gauge ──
+function MiniGauge({ score, color, size = 52 }: { score: number; color: string; size?: number }) {
+  const radius = (size - 8) / 2;
+  const circumference = 2 * Math.PI * radius * 0.75;
+  const strokeDashoffset = circumference - (score / 100) * circumference;
+  const center = size / 2;
+
+  return (
+    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle
+          cx={center} cy={center} r={radius}
+          fill="none" stroke="#2a2a2a" strokeWidth={4} strokeLinecap="round"
+          strokeDasharray={circumference} strokeDashoffset={circumference * 0.25}
+          transform={`rotate(135 ${center} ${center})`}
+        />
+        <circle
+          cx={center} cy={center} r={radius}
+          fill="none" stroke={color} strokeWidth={4} strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset + circumference * 0.25}
+          transform={`rotate(135 ${center} ${center})`}
+          style={{ transition: "stroke-dashoffset 0.8s ease-out" }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-[13px] font-semibold text-[#ededed]">{score}</span>
+      </div>
+    </div>
+  );
+}
+
 export function HealthScorePage() {
+  const { data: healthScore, isLoading } = trpc.healthScore.getCurrent.useQuery();
+  const recalcMutation = trpc.healthScore.recalculate.useMutation({
+    onSuccess: () => { utils.healthScore.getCurrent.invalidate(); },
+  });
+  const utils = trpc.useUtils();
+
+  const overall = healthScore?.overallScore ?? 0;
+  const pillarIcons: Record<string, React.ReactNode> = {
+    "Rendimiento de Ads": <Megaphone size={16} />,
+    "Engagement de Contenido": <BarChart3 size={16} />,
+    "Efectividad de Email": <Mail size={16} />,
+    "Conversion de Leads": <Target size={16} />,
+    "Atribucion de Revenue": <DollarSign size={16} />,
+  };
   const pillars = [
-    { label: "Ad Performance", score: 72, color: "#3ecf8e" },
-    { label: "Content Engagement", score: 58, color: "#f59e0b" },
-    { label: "Email Effectiveness", score: 81, color: "#6366f1" },
-    { label: "Lead Conversion", score: 45, color: "#ef4444" },
-    { label: "Revenue Attribution", score: 66, color: "#06b6d4" },
+    { label: "Rendimiento de Ads", score: healthScore?.adPerformance ?? 0, color: "#3ecf8e" },
+    { label: "Engagement de Contenido", score: healthScore?.contentEngagement ?? 0, color: "#f59e0b" },
+    { label: "Efectividad de Email", score: healthScore?.emailEffectiveness ?? 0, color: "#6366f1" },
+    { label: "Conversion de Leads", score: healthScore?.leadConversion ?? 0, color: "#ef4444" },
+    { label: "Atribucion de Revenue", score: healthScore?.revenueAttribution ?? 0, color: "#06b6d4" },
   ];
+
+  const scoreLabel = overall >= 80 ? "Excelente" : overall >= 60 ? "Bueno" : overall >= 40 ? "Regular" : "Necesita atencion";
+  const scoreColor = overall >= 80 ? "#3ecf8e" : overall >= 60 ? "#f59e0b" : overall >= 40 ? "#f97316" : "#ef4444";
+
+  const insights = (healthScore?.insights ?? []) as string[];
+  const recommendations = (healthScore?.recommendations ?? []) as Array<{ title?: string; description?: string; priority?: string }>;
+
+  const getPillarLabel = (score: number) =>
+    score >= 80 ? "Excelente" : score >= 60 ? "Bueno" : score >= 40 ? "Regular" : "Bajo";
 
   return (
     <>
@@ -619,34 +851,196 @@ export function HealthScorePage() {
         title="Health Score"
         description="Puntuacion general de la salud de tu marketing digital"
       />
-      <div className="flex items-center gap-6 mb-8">
-        <div
-          className="w-32 h-32 rounded-full flex items-center justify-center border-4"
-          style={{ borderColor: "#3ecf8e", backgroundColor: "#1e1e1e" }}
-        >
-          <div className="text-center">
-            <span className="text-[32px] font-bold text-[#ededed]">64</span>
-            <p className="text-[10px] text-[#888]">/ 100</p>
+
+      {isLoading ? (
+        <div className="space-y-4">
+          <div className="h-52 rounded-xl bg-[#1e1e1e] animate-pulse" />
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="h-28 rounded-xl bg-[#1e1e1e] animate-pulse" />
+            ))}
           </div>
         </div>
-        <div>
-          <p className="text-[15px] text-[#ededed] font-medium">Bueno</p>
-          <p className="text-[13px] text-[#888]">
-            Tu marketing esta funcionando bien, pero hay areas de mejora en conversion de leads.
-          </p>
+      ) : !healthScore ? (
+        <div className="rounded-xl border border-[#2e2e2e] p-12 text-center" style={{ backgroundColor: "#1e1e1e" }}>
+          <div className="w-16 h-16 rounded-2xl mx-auto mb-5 flex items-center justify-center" style={{ backgroundColor: "#252525" }}>
+            <Activity size={28} className="text-[#555]" />
+          </div>
+          <h3 className="text-[16px] font-medium text-[#ededed] mb-2">Sin datos de Health Score</h3>
+          <p className="text-[13px] text-[#888] mb-6 max-w-sm mx-auto">Calcula tu primer health score para obtener un diagnostico completo de tu marketing digital.</p>
+          <button
+            onClick={() => recalcMutation.mutate()}
+            disabled={recalcMutation.isPending}
+            className="inline-flex items-center gap-2 text-[13px] text-black px-5 py-2.5 rounded-lg font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
+            style={{ backgroundColor: "#3ecf8e" }}
+          >
+            <Zap size={14} />
+            {recalcMutation.isPending ? "Calculando..." : "Calcular Health Score"}
+          </button>
         </div>
-      </div>
-      <div className="grid grid-cols-1 gap-4">
-        {pillars.map((p) => (
-          <div key={p.label} className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[13px] text-[#ccc]">{p.label}</span>
-              <span className="text-[14px] font-medium text-[#ededed]">{p.score}/100</span>
+      ) : (
+        <div className="space-y-5">
+          {/* ── Hero: Overall Score ── */}
+          <div className="rounded-xl border border-[#2e2e2e] p-6" style={{ backgroundColor: "#1e1e1e" }}>
+            <div className="flex flex-col sm:flex-row items-center gap-6">
+              <HealthGauge score={overall} color={scoreColor} />
+              <div className="flex-1 text-center sm:text-left">
+                <div className="flex items-center gap-2 justify-center sm:justify-start mb-1">
+                  <span
+                    className="text-[11px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full"
+                    style={{ color: scoreColor, backgroundColor: `${scoreColor}15` }}
+                  >
+                    {scoreLabel}
+                  </span>
+                </div>
+                <h2 className="text-[18px] font-semibold text-[#ededed] mb-2">Salud de Marketing</h2>
+                {insights.length > 0 && (
+                  <p className="text-[13px] text-[#999] leading-relaxed max-w-md">{insights[0]}</p>
+                )}
+                {insights.length > 1 && (
+                  <p className="text-[12px] text-[#666] mt-1.5 leading-relaxed max-w-md">{insights[1]}</p>
+                )}
+                <button
+                  onClick={() => recalcMutation.mutate()}
+                  disabled={recalcMutation.isPending}
+                  className="inline-flex items-center gap-1.5 text-[12px] mt-4 px-3.5 py-1.5 rounded-lg border border-[#333] text-[#aaa] hover:text-[#ededed] hover:border-[#555] transition-colors disabled:opacity-50"
+                >
+                  <RotateCcw size={12} className={recalcMutation.isPending ? "animate-spin" : ""} />
+                  {recalcMutation.isPending ? "Recalculando..." : "Recalcular"}
+                </button>
+              </div>
             </div>
-            <ProgressBar value={p.score} max={100} color={p.color} />
           </div>
-        ))}
-      </div>
+
+          {/* ── Pillar Cards Grid ── */}
+          <div>
+            <h3 className="text-[13px] font-medium text-[#888] uppercase tracking-wider mb-3">Pilares de rendimiento</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {pillars.map((p) => {
+                const pillarStatus = getPillarLabel(p.score);
+                return (
+                  <div
+                    key={p.label}
+                    className="rounded-xl border border-[#2e2e2e] p-4 hover:border-[#3a3a3a] transition-colors"
+                    style={{ backgroundColor: "#1e1e1e" }}
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div
+                          className="w-8 h-8 rounded-lg flex items-center justify-center"
+                          style={{ backgroundColor: `${p.color}15`, color: p.color }}
+                        >
+                          {pillarIcons[p.label]}
+                        </div>
+                        <div>
+                          <p className="text-[12px] text-[#ccc] font-medium leading-tight">{p.label}</p>
+                          <p className="text-[10px] mt-0.5" style={{ color: p.score >= 60 ? "#3ecf8e" : p.score >= 40 ? "#f59e0b" : "#ef4444" }}>
+                            {pillarStatus}
+                          </p>
+                        </div>
+                      </div>
+                      <MiniGauge score={p.score} color={p.color} />
+                    </div>
+                    <div className="mt-1">
+                      <div className="w-full h-1.5 rounded-full" style={{ backgroundColor: "#2a2a2a" }}>
+                        <div
+                          className="h-1.5 rounded-full"
+                          style={{
+                            width: `${Math.min(p.score, 100)}%`,
+                            backgroundColor: p.color,
+                            transition: "width 0.8s ease-out",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ── Radar-style Summary Bar ── */}
+          <div className="rounded-xl border border-[#2e2e2e] p-5" style={{ backgroundColor: "#1e1e1e" }}>
+            <h3 className="text-[13px] font-medium text-[#888] uppercase tracking-wider mb-4">Comparativa de pilares</h3>
+            <div className="space-y-3">
+              {pillars.map((p) => (
+                <div key={p.label} className="flex items-center gap-3">
+                  <span className="text-[12px] text-[#888] w-44 flex-shrink-0 truncate">{p.label}</span>
+                  <div className="flex-1 h-3 rounded-full relative" style={{ backgroundColor: "#252525" }}>
+                    <div
+                      className="h-3 rounded-full relative"
+                      style={{
+                        width: `${Math.min(p.score, 100)}%`,
+                        background: `linear-gradient(90deg, ${p.color}88, ${p.color})`,
+                        transition: "width 0.8s ease-out",
+                      }}
+                    >
+                      <div
+                        className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full border-2"
+                        style={{ borderColor: p.color, backgroundColor: "#1e1e1e" }}
+                      />
+                    </div>
+                  </div>
+                  <span className="text-[13px] font-semibold text-[#ededed] w-8 text-right">{p.score}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Recommendations ── */}
+          {recommendations.length > 0 && (
+            <div>
+              <h3 className="text-[13px] font-medium text-[#888] uppercase tracking-wider mb-3">Recomendaciones</h3>
+              <div className="space-y-2">
+                {recommendations.map((rec, i) => {
+                  const priorityColor = rec.priority === "high" ? "#ef4444" : rec.priority === "medium" ? "#f59e0b" : "#3ecf8e";
+                  return (
+                    <div
+                      key={i}
+                      className="rounded-xl border border-[#2e2e2e] p-4 flex items-start gap-3 hover:border-[#3a3a3a] transition-colors"
+                      style={{ backgroundColor: "#1e1e1e" }}
+                    >
+                      <div
+                        className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+                        style={{ backgroundColor: `${priorityColor}15` }}
+                      >
+                        <Lightbulb size={14} style={{ color: priorityColor }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        {rec.title && <p className="text-[13px] text-[#ededed] font-medium">{rec.title}</p>}
+                        {rec.description && <p className="text-[12px] text-[#888] mt-0.5 leading-relaxed">{rec.description}</p>}
+                      </div>
+                      {rec.priority && (
+                        <span
+                          className="text-[10px] font-medium px-2 py-0.5 rounded-full flex-shrink-0"
+                          style={{ color: priorityColor, backgroundColor: `${priorityColor}15` }}
+                        >
+                          {rec.priority === "high" ? "Alta" : rec.priority === "medium" ? "Media" : "Baja"}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── Insights ── */}
+          {insights.length > 2 && (
+            <div className="rounded-xl border border-[#2e2e2e] p-5" style={{ backgroundColor: "#1e1e1e" }}>
+              <h3 className="text-[13px] font-medium text-[#888] uppercase tracking-wider mb-3">Insights adicionales</h3>
+              <div className="space-y-2">
+                {insights.slice(2).map((insight, i) => (
+                  <div key={i} className="flex items-start gap-2.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#3ecf8e] mt-1.5 flex-shrink-0" />
+                    <p className="text-[13px] text-[#ccc] leading-relaxed">{insight}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }
@@ -840,6 +1234,7 @@ function MetricasAIDot(props: any) {
 // ── Metricas Dashboard (react-grid-layout) ──
 import GridLayout, { type LayoutItem, noCompactor, type Layout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
+import { WidgetContent, WIDGET_SIZES } from "./metricas-widgets";
 
 
 const METRICAS_STORAGE_KEY = "nodelabz-metricas-layout";
@@ -850,44 +1245,54 @@ interface WidgetType {
   icon: React.ReactNode;
   defaultW: number;
   defaultH: number;
+  minW: number;
+  minH: number;
+  maxW: number;
+  maxH: number;
   description: string;
+}
+
+// Helper to merge size constraints from WIDGET_SIZES
+function ws(id: string, defaults: { defaultW: number; defaultH: number }) {
+  const s = WIDGET_SIZES[id] ?? { minW: 2, minH: 2, maxW: 12, maxH: 16 };
+  return { ...defaults, ...s };
 }
 
 const AVAILABLE_WIDGETS: WidgetType[] = [
   // ── Charts ──
-  { id: "kpi", label: "KPI Card", icon: <BarChart3 size={16} />, defaultW: 3, defaultH: 4, description: "Metrica individual con valor y tendencia" },
-  { id: "bar-chart", label: "Grafico de Barras", icon: <BarChart3 size={16} />, defaultW: 6, defaultH: 8, description: "Comparar valores entre categorias" },
-  { id: "line-chart", label: "Grafico de Lineas", icon: <Activity size={16} />, defaultW: 6, defaultH: 8, description: "Tendencias a lo largo del tiempo" },
-  { id: "area-chart", label: "Grafico de Area", icon: <Activity size={16} />, defaultW: 6, defaultH: 8, description: "Volumen y tendencia combinados" },
-  { id: "donut", label: "Donut / Pie", icon: <Target size={16} />, defaultW: 6, defaultH: 10, description: "Distribucion porcentual" },
-  { id: "table", label: "Tabla", icon: <LayoutDashboard size={16} />, defaultW: 6, defaultH: 8, description: "Datos tabulares con columnas" },
-  { id: "text", label: "Nota / Texto", icon: <Zap size={16} />, defaultW: 3, defaultH: 4, description: "Texto libre o anotacion" },
+  { id: "kpi", label: "KPI Card", icon: <BarChart3 size={16} />, description: "Metrica individual con valor y tendencia", ...ws("kpi", { defaultW: 3, defaultH: 4 }) },
+  { id: "bar-chart", label: "Grafico de Barras", icon: <BarChart3 size={16} />, description: "Comparar valores entre categorias", ...ws("bar-chart", { defaultW: 6, defaultH: 8 }) },
+  { id: "line-chart", label: "Grafico de Lineas", icon: <Activity size={16} />, description: "Tendencias a lo largo del tiempo", ...ws("line-chart", { defaultW: 6, defaultH: 8 }) },
+  { id: "area-chart", label: "Grafico de Area", icon: <Activity size={16} />, description: "Volumen y tendencia combinados", ...ws("area-chart", { defaultW: 6, defaultH: 8 }) },
+  { id: "donut", label: "Donut / Pie", icon: <Target size={16} />, description: "Distribucion porcentual", ...ws("donut", { defaultW: 5, defaultH: 10 }) },
+  { id: "table", label: "Tabla", icon: <LayoutDashboard size={16} />, description: "Datos tabulares con columnas", ...ws("table", { defaultW: 6, defaultH: 8 }) },
+  { id: "text", label: "Nota / Texto", icon: <Zap size={16} />, description: "Texto libre o anotacion", ...ws("text", { defaultW: 3, defaultH: 4 }) },
   // ── Marketing Performance ──
-  { id: "leads-hoy", label: "Leads Hoy", icon: <Users size={16} />, defaultW: 3, defaultH: 4, description: "Contador en vivo de leads capturados hoy" },
-  { id: "roas-canal", label: "ROAS por Canal", icon: <BarChart3 size={16} />, defaultW: 6, defaultH: 8, description: "Comparar ROAS entre Meta, Google y TikTok" },
-  { id: "gasto-revenue", label: "Gasto vs Revenue", icon: <Activity size={16} />, defaultW: 6, defaultH: 8, description: "Gasto publicitario vs ingresos generados" },
-  { id: "cpl-trend", label: "CPL Trend", icon: <TrendingDown size={16} />, defaultW: 6, defaultH: 8, description: "Costo por lead a lo largo del tiempo" },
-  { id: "campaign-status", label: "Estado de Campanas", icon: <Target size={16} />, defaultW: 4, defaultH: 4, description: "Campanas activas, pausadas y finalizadas" },
+  { id: "leads-hoy", label: "Leads Hoy", icon: <Users size={16} />, description: "Contador en vivo de leads capturados hoy", ...ws("leads-hoy", { defaultW: 3, defaultH: 4 }) },
+  { id: "roas-canal", label: "ROAS por Canal", icon: <BarChart3 size={16} />, description: "Comparar ROAS entre Meta, Google y TikTok", ...ws("roas-canal", { defaultW: 6, defaultH: 8 }) },
+  { id: "gasto-revenue", label: "Gasto vs Revenue", icon: <Activity size={16} />, description: "Gasto publicitario vs ingresos generados", ...ws("gasto-revenue", { defaultW: 6, defaultH: 8 }) },
+  { id: "cpl-trend", label: "CPL Trend", icon: <TrendingDown size={16} />, description: "Costo por lead a lo largo del tiempo", ...ws("cpl-trend", { defaultW: 6, defaultH: 8 }) },
+  { id: "campaign-status", label: "Estado de Campanas", icon: <Target size={16} />, description: "Campanas activas, pausadas y finalizadas", ...ws("campaign-status", { defaultW: 4, defaultH: 5 }) },
   // ── CRM & Pipeline ──
-  { id: "pipeline-funnel", label: "Pipeline Funnel", icon: <TrendingUp size={16} />, defaultW: 6, defaultH: 10, description: "Embudo visual de etapas de deals" },
-  { id: "deals-por-cerrar", label: "Deals por Cerrar", icon: <DollarSign size={16} />, defaultW: 4, defaultH: 8, description: "Deals mas cercanos al cierre" },
-  { id: "win-rate", label: "Win Rate", icon: <Target size={16} />, defaultW: 3, defaultH: 4, description: "Tasa de conversion de deals" },
-  { id: "leads-calientes", label: "Leads Calientes", icon: <Zap size={16} />, defaultW: 4, defaultH: 8, description: "Leads HOT con mayor puntuacion" },
-  { id: "actividad-reciente", label: "Actividad Reciente", icon: <Activity size={16} />, defaultW: 4, defaultH: 8, description: "Ultimas actividades del CRM" },
+  { id: "pipeline-funnel", label: "Pipeline Funnel", icon: <TrendingUp size={16} />, description: "Embudo visual de etapas de deals", ...ws("pipeline-funnel", { defaultW: 6, defaultH: 10 }) },
+  { id: "deals-por-cerrar", label: "Deals por Cerrar", icon: <DollarSign size={16} />, description: "Deals mas cercanos al cierre", ...ws("deals-por-cerrar", { defaultW: 4, defaultH: 8 }) },
+  { id: "win-rate", label: "Win Rate", icon: <Target size={16} />, description: "Tasa de conversion de deals", ...ws("win-rate", { defaultW: 3, defaultH: 4 }) },
+  { id: "leads-calientes", label: "Leads Calientes", icon: <Zap size={16} />, description: "Leads HOT con mayor puntuacion", ...ws("leads-calientes", { defaultW: 4, defaultH: 8 }) },
+  { id: "actividad-reciente", label: "Actividad Reciente", icon: <Activity size={16} />, description: "Ultimas actividades del CRM", ...ws("actividad-reciente", { defaultW: 4, defaultH: 8 }) },
   // ── Channels ──
-  { id: "whatsapp-inbox", label: "WhatsApp Inbox", icon: <MessageCircle size={16} />, defaultW: 4, defaultH: 6, description: "Conversaciones sin leer y ultimos mensajes" },
-  { id: "email-open-rate", label: "Email Open Rate", icon: <Mail size={16} />, defaultW: 3, defaultH: 4, description: "Tasa de apertura de emails actual" },
-  { id: "social-engagement", label: "Social Engagement", icon: <Globe size={16} />, defaultW: 4, defaultH: 6, description: "Engagement en redes sociales" },
-  { id: "integration-status", label: "Estado Integraciones", icon: <Plug size={16} />, defaultW: 4, defaultH: 4, description: "Salud de plataformas conectadas" },
+  { id: "whatsapp-inbox", label: "WhatsApp Inbox", icon: <MessageCircle size={16} />, description: "Conversaciones sin leer y ultimos mensajes", ...ws("whatsapp-inbox", { defaultW: 4, defaultH: 6 }) },
+  { id: "email-open-rate", label: "Email Open Rate", icon: <Mail size={16} />, description: "Tasa de apertura de emails actual", ...ws("email-open-rate", { defaultW: 3, defaultH: 4 }) },
+  { id: "social-engagement", label: "Social Engagement", icon: <Globe size={16} />, description: "Engagement en redes sociales", ...ws("social-engagement", { defaultW: 4, defaultH: 6 }) },
+  { id: "integration-status", label: "Estado Integraciones", icon: <Plug size={16} />, description: "Salud de plataformas conectadas", ...ws("integration-status", { defaultW: 4, defaultH: 5 }) },
   // ── AI & Insights ──
-  { id: "ai-recomendacion", label: "AI Recomendacion", icon: <Lightbulb size={16} />, defaultW: 6, defaultH: 4, description: "Ultima recomendacion de la IA" },
-  { id: "health-score", label: "Health Score", icon: <Activity size={16} />, defaultW: 3, defaultH: 6, description: "Puntuacion de salud 0-100" },
-  { id: "anomaly-alert", label: "Anomaly Alert", icon: <AlertTriangle size={16} />, defaultW: 4, defaultH: 4, description: "Metricas con desviaciones detectadas" },
-  { id: "prediccion-revenue", label: "Prediccion Revenue", icon: <TrendingUp size={16} />, defaultW: 6, defaultH: 8, description: "Proyeccion de ingresos con IA" },
+  { id: "ai-recomendacion", label: "AI Recomendacion", icon: <Lightbulb size={16} />, description: "Ultima recomendacion de la IA", ...ws("ai-recomendacion", { defaultW: 6, defaultH: 5 }) },
+  { id: "health-score", label: "Health Score", icon: <Activity size={16} />, description: "Puntuacion de salud 0-100", ...ws("health-score", { defaultW: 3, defaultH: 7 }) },
+  { id: "anomaly-alert", label: "Anomaly Alert", icon: <AlertTriangle size={16} />, description: "Metricas con desviaciones detectadas", ...ws("anomaly-alert", { defaultW: 4, defaultH: 5 }) },
+  { id: "prediccion-revenue", label: "Prediccion Revenue", icon: <TrendingUp size={16} />, description: "Proyeccion de ingresos con IA", ...ws("prediccion-revenue", { defaultW: 6, defaultH: 8 }) },
   // ── Financial ──
-  { id: "revenue-mtd", label: "Revenue MTD", icon: <DollarSign size={16} />, defaultW: 3, defaultH: 4, description: "Ingresos del mes con tendencia" },
-  { id: "mrr-tracker", label: "MRR Tracker", icon: <DollarSign size={16} />, defaultW: 6, defaultH: 8, description: "Revenue recurrente mensual" },
-  { id: "top-clientes", label: "Top Clientes", icon: <Users size={16} />, defaultW: 4, defaultH: 8, description: "Clientes con mayor valor" },
+  { id: "revenue-mtd", label: "Revenue MTD", icon: <DollarSign size={16} />, description: "Ingresos del mes con tendencia", ...ws("revenue-mtd", { defaultW: 3, defaultH: 4 }) },
+  { id: "mrr-tracker", label: "MRR Tracker", icon: <DollarSign size={16} />, description: "Revenue recurrente mensual", ...ws("mrr-tracker", { defaultW: 6, defaultH: 8 }) },
+  { id: "top-clientes", label: "Top Clientes", icon: <Users size={16} />, description: "Clientes con mayor valor", ...ws("top-clientes", { defaultW: 4, defaultH: 8 }) },
 ];
 
 const defaultGridLayout: LayoutItem[] = [];
@@ -902,7 +1307,12 @@ export function MetricasPage() {
   const [widgets, setWidgets] = useState<PlacedWidget[]>([]);
   const gridRef = useRef<HTMLDivElement>(null);
   const [gridWidth, setGridWidth] = useState(1200);
+  const [gridHeight, setGridHeight] = useState(800);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [dropPreview, setDropPreview] = useState<{
+    gridX: number; gridY: number; w: number; h: number; canDrop: boolean; widgetId: string;
+  } | null>(null);
+  const dragWidgetIdRef = useRef<string | null>(null);
 
   // Load from localStorage (handle old format migration)
   useEffect(() => {
@@ -930,6 +1340,8 @@ export function MetricasPage() {
     const update = () => {
       const w = el.clientWidth - 32;
       if (w > 100) setGridWidth(w);
+      const h = el.clientHeight;
+      if (h > 100) setGridHeight(h);
     };
     // Delay to let sidebar transition finish
     const timeout = setTimeout(update, 300);
@@ -942,6 +1354,13 @@ export function MetricasPage() {
     setWidgets(w);
     try { localStorage.setItem(METRICAS_STORAGE_KEY, JSON.stringify(w)); } catch { /* ignore */ }
   }, []);
+
+  // ── Grid constants ──
+  const GRID_COLS = 12;
+  const GRID_ROW_HEIGHT = 30;
+  const GRID_MARGIN = 14;
+  // Compute max rows that fit the visible container (account for padding)
+  const maxRows = Math.floor((gridHeight - 20) / (GRID_ROW_HEIGHT + GRID_MARGIN));
 
   const handleLayoutChange = useCallback((newLayout: readonly LayoutItem[]) => {
     setWidgets((prev) => {
@@ -971,8 +1390,8 @@ export function MetricasPage() {
       }
     }
 
-    // Scan for first position where the new card fits within max rows
-    const MAX_ROWS = 24;
+    // Scan for first position where the new card fits within visible area
+    const MAX_ROWS = maxRows;
     let placeX = 0;
     let placeY = 0;
     let found = false;
@@ -998,12 +1417,12 @@ export function MetricasPage() {
     if (!found) return; // Grid is full — don't add
 
     const newWidget: PlacedWidget = {
-      layoutItem: { i: id, x: placeX, y: placeY, w, h },
+      layoutItem: { i: id, x: placeX, y: placeY, w, h, minW: widgetType.minW, minH: widgetType.minH, maxW: widgetType.maxW, maxH: widgetType.maxH },
       widgetType: widgetType.id,
       title: widgetType.label,
     };
     saveWidgets([...widgets, newWidget]);
-  }, [widgets, saveWidgets]);
+  }, [widgets, saveWidgets, maxRows]);
 
   const removeWidget = useCallback((id: string) => {
     saveWidgets(widgets.filter((w) => w.layoutItem.i !== id));
@@ -1012,6 +1431,104 @@ export function MetricasPage() {
   const handleClear = useCallback(() => {
     saveWidgets([]);
   }, [saveWidgets]);
+
+  // ── Drag-and-drop from sidebar ──
+
+  // Build occupancy set from current widgets
+  const buildOccupied = useCallback(() => {
+    const occupied = new Set<string>();
+    for (const widget of widgets) {
+      const li = widget.layoutItem;
+      for (let row = li.y; row < li.y + li.h; row++) {
+        for (let col = li.x; col < li.x + li.w; col++) {
+          occupied.add(`${col},${row}`);
+        }
+      }
+    }
+    return occupied;
+  }, [widgets]);
+
+  // Convert pixel coords to grid coords
+  const pixelToGrid = useCallback((clientX: number, clientY: number) => {
+    if (!gridRef.current) return { gx: 0, gy: 0 };
+    const rect = gridRef.current.getBoundingClientRect();
+    const scrollTop = gridRef.current.scrollTop;
+    const colWidth = (gridWidth + GRID_MARGIN) / GRID_COLS;
+    const dropX = clientX - rect.left - 16;
+    const dropY = clientY - rect.top + scrollTop - 10;
+    return {
+      gx: Math.floor(dropX / colWidth),
+      gy: Math.floor(dropY / (GRID_ROW_HEIGHT + GRID_MARGIN)),
+    };
+  }, [gridWidth]);
+
+  // Check if a widget fits at a position (within bounds and no overlap)
+  const checkFits = useCallback((gx: number, gy: number, w: number, h: number, occupied: Set<string>) => {
+    const clampedX = Math.max(0, Math.min(gx, GRID_COLS - w));
+    const clampedY = Math.max(0, gy);
+    // Check if widget would exceed the visible area
+    if (clampedY + h > maxRows) return false;
+    for (let dy = 0; dy < h; dy++) {
+      for (let dx = 0; dx < w; dx++) {
+        if (occupied.has(`${clampedX + dx},${clampedY + dy}`)) return false;
+      }
+    }
+    return true;
+  }, [maxRows]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("application/x-widget-id")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+
+    // Get widget type from ref (dataTransfer.getData not available in dragOver)
+    const wId = dragWidgetIdRef.current;
+    const wt = wId ? AVAILABLE_WIDGETS.find((w) => w.id === wId) : null;
+    if (!wt) return;
+
+    const { gx, gy } = pixelToGrid(e.clientX, e.clientY);
+    const clampedX = Math.max(0, Math.min(gx, GRID_COLS - wt.defaultW));
+    const clampedY = Math.max(0, gy);
+
+    const occupied = buildOccupied();
+    const canDrop = checkFits(clampedX, clampedY, wt.defaultW, wt.defaultH, occupied);
+
+    setDropPreview((prev) => {
+      // Only update if position changed to avoid excessive re-renders
+      if (prev && prev.gridX === clampedX && prev.gridY === clampedY && prev.widgetId === wt.id) return prev;
+      return { gridX: clampedX, gridY: clampedY, w: wt.defaultW, h: wt.defaultH, canDrop, widgetId: wt.id };
+    });
+  }, [pixelToGrid, buildOccupied, checkFits]);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    // Only clear if actually leaving the grid container (not entering a child)
+    if (gridRef.current && !gridRef.current.contains(e.relatedTarget as globalThis.Node | null)) {
+      setDropPreview(null);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+
+    const widgetId = e.dataTransfer.getData("application/x-widget-id");
+    const widgetType = AVAILABLE_WIDGETS.find((w) => w.id === widgetId);
+    const preview = dropPreview;
+    setDropPreview(null);
+    dragWidgetIdRef.current = null;
+
+    if (!widgetType || !preview) return;
+
+    // Don't drop if position is occupied
+    if (!preview.canDrop) return;
+
+    const id = `${widgetType.id}-${Date.now()}`;
+    const newWidget: PlacedWidget = {
+      layoutItem: { i: id, x: preview.gridX, y: preview.gridY, w: widgetType.defaultW, h: widgetType.defaultH, minW: widgetType.minW, minH: widgetType.minH, maxW: widgetType.maxW, maxH: widgetType.maxH },
+      widgetType: widgetType.id,
+      title: widgetType.label,
+    };
+    saveWidgets([...widgets, newWidget]);
+  }, [dropPreview, widgets, saveWidgets]);
 
   const layout = widgets.map((w) => w.layoutItem);
   const widgetMap = Object.fromEntries(widgets.map((w) => [w.layoutItem.i, w]));
@@ -1072,9 +1589,16 @@ export function MetricasPage() {
                       </div>
                     </>
                   )}
-                  <button
+                  <div
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("application/x-widget-id", wt.id);
+                      e.dataTransfer.effectAllowed = "copy";
+                      dragWidgetIdRef.current = wt.id;
+                    }}
                     onClick={() => addWidget(wt)}
                     className="block w-full text-left text-[14px] py-[6px] px-3 transition-colors text-[#999] hover:text-[#ededed] hover:bg-[#2a2a2a] rounded-md mb-0.5"
+                    style={{ cursor: "grab" }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: "#252525", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "#666" }}>
@@ -1085,7 +1609,7 @@ export function MetricasPage() {
                         <div style={{ fontSize: 10, color: "#555", lineHeight: 1.2 }}>{wt.description}</div>
                       </div>
                     </div>
-                  </button>
+                  </div>
                 </React.Fragment>
               );
             })}
@@ -1136,7 +1660,13 @@ export function MetricasPage() {
       {/* Main grid area */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {/* Grid */}
-        <div ref={gridRef} style={{ flex: 1, overflow: "auto", padding: "10px 16px", minWidth: 0, position: "relative" }}>
+        <div
+          ref={gridRef}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          style={{ flex: 1, overflow: "auto", padding: "10px 16px", minWidth: 0, position: "relative" }}
+        >
           {/* Floating clear button */}
           {widgets.length > 0 && (
             <button
@@ -1152,10 +1682,30 @@ export function MetricasPage() {
               Limpiar
             </button>
           )}
+          {/* Drop preview ghost */}
+          {dropPreview && (
+            <div
+              style={{
+                position: "absolute",
+                left: 16 + dropPreview.gridX * ((gridWidth + GRID_MARGIN) / GRID_COLS),
+                top: 10 + dropPreview.gridY * (GRID_ROW_HEIGHT + GRID_MARGIN),
+                width: dropPreview.w * ((gridWidth + GRID_MARGIN) / GRID_COLS) - GRID_MARGIN,
+                height: dropPreview.h * (GRID_ROW_HEIGHT + GRID_MARGIN) - GRID_MARGIN,
+                borderRadius: 10,
+                border: `2px dashed ${dropPreview.canDrop ? "#3ecf8e" : "#ef4444"}`,
+                backgroundColor: dropPreview.canDrop ? "#3ecf8e15" : "#ef444415",
+                pointerEvents: "none",
+                zIndex: 30,
+                transition: "left 150ms ease, top 150ms ease",
+              }}
+            />
+          )}
           {widgets.length === 0 ? (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", flexDirection: "column", gap: 12 }}>
-              <LayoutDashboard size={40} color="#333" />
-              <p style={{ fontSize: 14, color: "#555" }}>Agrega componentes desde el panel izquierdo</p>
+              <LayoutDashboard size={40} color={dropPreview ? "#3ecf8e" : "#333"} />
+              <p style={{ fontSize: 14, color: dropPreview ? "#3ecf8e" : "#555" }}>
+                {dropPreview ? "Suelta aqui para agregar" : "Arrastra componentes desde el panel izquierdo"}
+              </p>
               <button
                 onClick={() => setSidebarOpen(true)}
                 style={{
@@ -1174,7 +1724,7 @@ export function MetricasPage() {
                 rowHeight: 30,
                 margin: [14, 14] as const,
                 containerPadding: [0, 0] as const,
-                maxRows: 24,
+                maxRows,
               }}
               compactor={{
                 ...noCompactor,
@@ -1234,9 +1784,9 @@ export function MetricasPage() {
                           </button>
                         </div>
                       </div>
-                      {/* Body — empty placeholder */}
-                      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        <span style={{ fontSize: 10, color: "#333" }}>{widget?.widgetType}</span>
+                      {/* Body */}
+                      <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+                        <WidgetContent widgetType={widget?.widgetType ?? ""} />
                       </div>
                     </div>
                   </div>
@@ -1731,6 +2281,22 @@ function DetailPanel({
 }) {
   const data = node.data;
   const IconComponent = nodeMapIconMap[data.icon];
+  const isHub = node.id === "hub";
+  const utils = trpc.useUtils();
+
+  const syncMutation = trpc.integrations.syncNow.useMutation({
+    onSuccess: () => {
+      utils.integrations.list.invalidate();
+      utils.dashboard.getSummary.invalidate();
+    },
+  });
+
+  const disconnectMutation = trpc.integrations.disconnect.useMutation({
+    onSuccess: () => {
+      utils.integrations.list.invalidate();
+      onClose();
+    },
+  });
 
   return (
     <div
@@ -1833,6 +2399,24 @@ function DetailPanel({
         </div>
       )}
 
+      {/* Sync status message */}
+      {syncMutation.isSuccess && (
+        <div style={{ padding: "10px 20px", borderBottom: "1px solid #2e2e2e" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#3ecf8e", fontSize: 12 }}>
+            <CheckCircle2 size={13} />
+            Sincronizado — {syncMutation.data?.synced ?? 0} registros
+          </div>
+        </div>
+      )}
+      {syncMutation.isError && (
+        <div style={{ padding: "10px 20px", borderBottom: "1px solid #2e2e2e" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#ef4444", fontSize: 12 }}>
+            <XCircle size={13} />
+            {syncMutation.error?.message || "Error al sincronizar"}
+          </div>
+        </div>
+      )}
+
       {/* Metrics */}
       <div style={{ padding: "16px 20px", flex: 1, overflow: "auto" }}>
         <div
@@ -1890,55 +2474,67 @@ function DetailPanel({
       </div>
 
       {/* Actions */}
-      <div
-        style={{
-          padding: "16px 20px",
-          borderTop: "1px solid #2e2e2e",
-          display: "flex",
-          gap: 8,
-        }}
-      >
-        <button
+      {!isHub && (
+        <div
           style={{
-            flex: 1,
-            padding: "10px",
-            borderRadius: 8,
-            border: "1px solid #2e2e2e",
-            background: "#252525",
-            color: "#ededed",
-            fontSize: 12,
-            fontWeight: 500,
-            cursor: "pointer",
+            padding: "16px 20px",
+            borderTop: "1px solid #2e2e2e",
             display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 6,
+            flexDirection: "column",
+            gap: 8,
           }}
         >
-          <Activity size={13} />
-          Ver logs
-        </button>
-        <button
-          style={{
-            flex: 1,
-            padding: "10px",
-            borderRadius: 8,
-            border: "none",
-            background: "#3ecf8e",
-            color: "#171717",
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 6,
-          }}
-        >
-          <Zap size={13} />
-          Configurar
-        </button>
-      </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => syncMutation.mutate({ integrationId: node.id })}
+              disabled={syncMutation.isPending}
+              style={{
+                flex: 1,
+                padding: "10px",
+                borderRadius: 8,
+                border: "none",
+                background: "#3ecf8e",
+                color: "#171717",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: syncMutation.isPending ? "wait" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                opacity: syncMutation.isPending ? 0.6 : 1,
+              }}
+            >
+              <RotateCcw size={13} className={syncMutation.isPending ? "animate-spin" : ""} />
+              {syncMutation.isPending ? "Sincronizando..." : "Sincronizar ahora"}
+            </button>
+          </div>
+          <button
+            onClick={() => {
+              if (confirm(`Desconectar ${data.label}?`)) {
+                disconnectMutation.mutate({ integrationId: node.id });
+              }
+            }}
+            disabled={disconnectMutation.isPending}
+            style={{
+              padding: "8px",
+              borderRadius: 8,
+              border: "1px solid #2e2e2e",
+              background: "transparent",
+              color: "#888",
+              fontSize: 11,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 5,
+            }}
+          >
+            <XCircle size={12} />
+            {disconnectMutation.isPending ? "Desconectando..." : "Desconectar"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1946,9 +2542,90 @@ function DetailPanel({
 // ── Node Map Page ─────────────────────────────────────────────────────────
 
 export function NodeMapPage() {
-  const [nodes, , onNodesChange] = useNodesState(nodeMapInitialNodes);
-  const [edges, , onEdgesChange] = useEdgesState(nodeMapInitialEdges);
+  const { data: integrations } = trpc.integrations.list.useQuery();
+
+  // Build nodes from real integrations + static fallback nodes
+  const dynamicNodes = useMemo((): Node<IntegrationNodeData>[] => {
+    if (!integrations || integrations.length === 0) return nodeMapInitialNodes;
+
+    const platformIconMap: Record<string, keyof typeof nodeMapIconMap> = {
+      meta_ads: "megaphone",
+      google_ads: "search",
+      ga4: "chart",
+      tiktok: "music",
+      shopify: "shop",
+    };
+
+    const platformLabels: Record<string, string> = {
+      meta_ads: "Meta Ads",
+      google_ads: "Google Ads",
+      ga4: "Google Analytics 4",
+      tiktok: "TikTok Ads",
+      shopify: "Shopify",
+    };
+
+    // Central NodeLabz hub
+    const nodes: Node<IntegrationNodeData>[] = [
+      {
+        id: "hub",
+        type: "integration",
+        position: { x: 400, y: 250 },
+        data: {
+          label: "NodeLabz",
+          icon: "users" as keyof typeof nodeMapIconMap,
+          status: "healthy",
+          subtitle: "CRM & Data Hub",
+          description: "Plataforma central de datos",
+        },
+      },
+    ];
+
+    integrations.forEach((int, i) => {
+      const angle = (i / integrations.length) * 2 * Math.PI - Math.PI / 2;
+      const radius = 220;
+      const x = 400 + Math.cos(angle) * radius;
+      const y = 250 + Math.sin(angle) * radius;
+
+      const status: StatusType = int.status === "active" ? "healthy"
+        : int.status === "error" ? "broken"
+        : "warning";
+
+      nodes.push({
+        id: int.id,
+        type: "integration",
+        position: { x, y },
+        data: {
+          label: platformLabels[int.platform] ?? int.platform,
+          icon: platformIconMap[int.platform] ?? "chart",
+          status,
+          subtitle: int.status === "active" ? "Sincronizado" : int.status,
+          description: int.lastSyncAt ? `Ultimo sync: ${new Date(int.lastSyncAt).toLocaleDateString()}` : "Sin sincronizar",
+        },
+      });
+    });
+
+    return nodes;
+  }, [integrations]);
+
+  const dynamicEdges = useMemo((): Edge[] => {
+    return dynamicNodes
+      .filter((n) => n.id !== "hub")
+      .map((n) => ({
+        id: `hub-${n.id}`,
+        source: "hub",
+        target: n.id,
+        type: "smoothstep",
+        animated: n.data.status === "healthy",
+        style: { stroke: statusColor[n.data.status], strokeWidth: 2, opacity: 0.6 },
+      }));
+  }, [dynamicNodes]);
+
+  const [nodes, , onNodesChange] = useNodesState(dynamicNodes);
+  const [edges, , onEdgesChange] = useEdgesState(dynamicEdges);
   const [selectedNode, setSelectedNode] = useState<Node<IntegrationNodeData> | null>(null);
+
+  const displayNodes = dynamicNodes.length > 0 ? dynamicNodes : nodes;
+  const displayEdges = dynamicEdges.length > 0 ? dynamicEdges : edges;
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
@@ -1962,159 +2639,55 @@ export function NodeMapPage() {
     setSelectedNode(null);
   }, []);
 
-  const healthyCount = nodeMapInitialNodes.filter((n) => n.data.status === "healthy").length;
-  const warningCount = nodeMapInitialNodes.filter((n) => n.data.status === "warning").length;
-  const brokenCount = nodeMapInitialNodes.filter((n) => n.data.status === "broken").length;
+  const healthyCount = displayNodes.filter((n) => n.data.status === "healthy").length;
+  const warningCount = displayNodes.filter((n) => n.data.status === "warning").length;
+  const brokenCount = displayNodes.filter((n) => n.data.status === "broken").length;
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        fontFamily:
-          '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        overflow: "hidden",
-      }}
-    >
-      {/* ── Title Bar ─────────────────────────────────────────────────── */}
-      <div
-        style={{
-          height: 56,
-          borderBottom: "1px solid #2e2e2e",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 24px",
-          flexShrink: 0,
-          background: "#1c1c1c",
-          borderRadius: "12px 12px 0 0",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: "linear-gradient(135deg, #3ecf8e 0%, #2ba06e 100%)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Zap size={16} color="#fff" />
+    <>
+      {/* ====== HEADER BAR ====== */}
+      <div className="flex items-center gap-4 mb-4">
+        <h1 className="text-base font-semibold tracking-tight whitespace-nowrap text-[#ededed]">
+          Node Map
+        </h1>
+
+        <div className="mx-2 h-5 w-px bg-[#2e2e2e]" />
+
+        <span className="text-xs text-[#666]">Marketing Ecosystem</span>
+
+        <div className="flex-1" />
+
+        {/* Status indicators */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 text-[12px] text-[#3ecf8e]">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#3ecf8e]" />
+            {healthyCount} Healthy
           </div>
-          <div>
-            <h1
-              style={{
-                color: "#ededed",
-                fontSize: 15,
-                fontWeight: 600,
-                margin: 0,
-                letterSpacing: "-0.01em",
-              }}
-            >
-              Node Map
-            </h1>
-            <span style={{ color: "#666", fontSize: 11 }}>
-              Marketing Ecosystem
-            </span>
+          <div className="flex items-center gap-1.5 text-[12px] text-[#f5a623]">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#f5a623]" />
+            {warningCount} Warning
+          </div>
+          <div className="flex items-center gap-1.5 text-[12px] text-[#ef4444]">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]" />
+            {brokenCount} Error
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-                fontSize: 12,
-                color: "#3ecf8e",
-              }}
-            >
-              <span
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: "50%",
-                  background: "#3ecf8e",
-                }}
-              />
-              {healthyCount} Healthy
-            </div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-                fontSize: 12,
-                color: "#f5a623",
-              }}
-            >
-              <span
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: "50%",
-                  background: "#f5a623",
-                }}
-              />
-              {warningCount} Warning
-            </div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-                fontSize: 12,
-                color: "#ef4444",
-              }}
-            >
-              <span
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: "50%",
-                  background: "#ef4444",
-                }}
-              />
-              {brokenCount} Error
-            </div>
-          </div>
-          <div
-            style={{
-              width: 1,
-              height: 24,
-              background: "#2e2e2e",
-            }}
-          />
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "6px 12px",
-              borderRadius: 8,
-              background: "#252525",
-              border: "1px solid #2e2e2e",
-              color: "#888",
-              fontSize: 12,
-            }}
-          >
-            <TrendingUp size={13} />
-            {nodeMapInitialNodes.length} integraciones
-          </div>
+        <div className="mx-2 h-5 w-px bg-[#2e2e2e]" />
+
+        <div className="flex items-center gap-1.5 rounded-md border border-[#2e2e2e] bg-[#252525] px-3 py-1.5 text-[12px] text-[#888]">
+          <TrendingUp size={13} />
+          {displayNodes.length} integraciones
         </div>
       </div>
 
-      {/* ── Main Area ─────────────────────────────────────────────────── */}
-      <div style={{ height: "calc(100vh - 180px)", display: "flex", position: "relative" }}>
+      {/* ====== MAIN LAYOUT ====== */}
+      <div className="flex overflow-hidden rounded-lg border border-[#2e2e2e] relative" style={{ height: "calc(100vh - 180px)" }}>
         {/* ReactFlow Canvas */}
-        <div style={{ flex: 1 }}>
+        <div className="flex-1">
           <ReactFlow
-            nodes={nodes}
-            edges={edges}
+            nodes={displayNodes}
+            edges={displayEdges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onNodeClick={onNodeClick}
@@ -2124,30 +2697,12 @@ export function NodeMapPage() {
             fitViewOptions={{ padding: 0.3 }}
             proOptions={{ hideAttribution: true }}
             style={{ background: "#171717" }}
-            defaultEdgeOptions={{
-              type: "smoothstep",
-            }}
+            defaultEdgeOptions={{ type: "smoothstep" }}
           >
-            <Background
-              variant={BackgroundVariant.Dots}
-              gap={24}
-              size={1}
-              color="#2e2e2e"
-            />
-            <Controls
-              showInteractive={false}
-              style={{
-                borderRadius: 8,
-                border: "1px solid #2e2e2e",
-                overflow: "hidden",
-              }}
-            />
+            <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#2e2e2e" />
+            <Controls showInteractive={false} className="!rounded-lg !border !border-[#2e2e2e] !overflow-hidden" />
             <MiniMap
-              style={{
-                background: "#1c1c1c",
-                borderRadius: 8,
-                border: "1px solid #2e2e2e",
-              }}
+              style={{ background: "#1c1c1c", borderRadius: 8, border: "1px solid #2e2e2e" }}
               maskColor="rgba(23, 23, 23, 0.7)"
               nodeColor={(node) => {
                 const n = node as Node<IntegrationNodeData>;
@@ -2159,133 +2714,144 @@ export function NodeMapPage() {
 
         {/* Detail Panel */}
         {selectedNode && (
-          <DetailPanel
-            node={selectedNode}
-            onClose={() => setSelectedNode(null)}
-          />
+          <DetailPanel node={selectedNode} onClose={() => setSelectedNode(null)} />
         )}
 
-        {/* ── AI Suggestion Banner ──────────────────────────────────── */}
-        <div
-          style={{
-            position: "absolute",
-            bottom: 16,
-            left: 16,
-            right: selectedNode ? 336 : 16,
-            background: "#1c1c1c",
-            border: "1px solid #2e2e2e",
-            borderRadius: 12,
-            padding: "14px 20px",
-            display: "flex",
-            alignItems: "center",
-            gap: 14,
-            boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
-            transition: "right 0.2s ease",
-          }}
-        >
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              background: "linear-gradient(135deg, #3ecf8e20, #3ecf8e10)",
-              border: "1px solid #3ecf8e30",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-              fontSize: 18,
-            }}
-          >
-            <Zap size={16} color="#3ecf8e" />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
+        {/* AI Suggestion Banner — dynamic based on integration state */}
+        {(() => {
+          const stale = displayNodes.filter((n) => {
+            if (n.id === "hub") return false;
+            const desc = n.data.description || "";
+            return desc === "Sin sincronizar";
+          });
+          const broken = displayNodes.filter((n) => n.data.status === "broken");
+          const warning = displayNodes.filter((n) => n.data.status === "warning");
+
+          let message: React.ReactNode = null;
+
+          if (broken.length > 0) {
+            message = (
+              <>
+                {broken.map((n) => n.data.label).join(", ")} {broken.length === 1 ? "tiene" : "tienen"} error de conexion.{" "}
+                <span className="text-[#888]">Revisa la configuracion de la integracion.</span>
+              </>
+            );
+          } else if (stale.length > 0) {
+            message = (
+              <>
+                {stale.map((n) => n.data.label).join(", ")} {stale.length === 1 ? "no se ha" : "no se han"} sincronizado aun.{" "}
+                <span className="text-[#888]">Haz click en Sincronizar para importar datos.</span>
+              </>
+            );
+          } else if (warning.length > 0) {
+            message = (
+              <>
+                {warning.map((n) => n.data.label).join(", ")} {warning.length === 1 ? "necesita" : "necesitan"} atencion.{" "}
+                <span className="text-[#888]">Verifica el estado de los tokens.</span>
+              </>
+            );
+          } else if (healthyCount > 1) {
+            message = (
+              <>
+                Todas las integraciones funcionan correctamente.{" "}
+                <span className="text-[#888]">{healthyCount - 1} plataformas sincronizando datos.</span>
+              </>
+            );
+          }
+
+          if (!message) return null;
+
+          const isGood = broken.length === 0 && stale.length === 0 && warning.length === 0;
+          const bannerColor = broken.length > 0 ? "#ef4444" : stale.length > 0 ? "#f59e0b" : warning.length > 0 ? "#f59e0b" : "#3ecf8e";
+
+          return (
             <div
-              style={{
-                color: "#ededed",
-                fontSize: 13,
-                lineHeight: "1.5",
-              }}
+              className="absolute top-4 left-4 flex items-center gap-3 rounded-xl border border-[#2e2e2e] bg-[#1c1c1c]/90 backdrop-blur-sm px-5 py-3 shadow-2xl transition-all z-10"
+              style={{ right: selectedNode ? 336 : 16 }}
             >
-              <span style={{ color: "#3ecf8e", fontWeight: 600 }}>
-                IA detecto:
-              </span>{" "}
-              GA4 no sincroniza desde hace 3 dias. TikTok tiene CPA 40%
-              mas alto que Meta.{" "}
-              <span style={{ color: "#888" }}>
-                Quieres que redistribuya el presupuesto?
-              </span>
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                style={{ backgroundColor: `${bannerColor}15`, border: `1px solid ${bannerColor}30` }}
+              >
+                {isGood ? <CheckCircle2 size={14} color={bannerColor} /> : <AlertTriangle size={14} color={bannerColor} />}
+              </div>
+              <div className="flex-1 min-w-0 text-[13px] leading-relaxed text-[#ededed]">
+                <span className="font-semibold" style={{ color: bannerColor }}>
+                  {isGood ? "Estado:" : "Atencion:"}
+                </span>{" "}
+                {message}
+              </div>
             </div>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              flexShrink: 0,
-            }}
-          >
-            <button
-              style={{
-                padding: "8px 16px",
-                borderRadius: 8,
-                border: "1px solid #2e2e2e",
-                background: "#252525",
-                color: "#888",
-                fontSize: 12,
-                fontWeight: 500,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Ignorar
-            </button>
-            <button
-              style={{
-                padding: "8px 16px",
-                borderRadius: 8,
-                border: "none",
-                background: "#3ecf8e",
-                color: "#171717",
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-              }}
-            >
-              <DollarSign size={13} />
-              Redistribuir
-            </button>
-          </div>
-        </div>
+          );
+        })()}
       </div>
-    </div>
+    </>
   );
 }
 
 export function RecomendacionesIAPage() {
-  const recommendations = [
-    {
-      severity: "critical",
-      title: "ROAS bajo en TikTok Ads",
-      description: "Tu ROAS de 2.9x esta 28% debajo del benchmark. Considera pausar los ad sets con peor rendimiento.",
-      action: "Revisar campanas",
-    },
-    {
-      severity: "warning",
-      title: "Tasa de conversion en caida",
-      description: "La conversion bajo 0.4% esta semana. Revisa los landing pages y formularios.",
-      action: "Ver detalles",
-    },
-    {
-      severity: "opportunity",
-      title: "Audiencia de alto rendimiento detectada",
-      description: "El segmento 'Mujeres 25-34 en San Jose' tiene 2.3x mas conversiones. Aumenta presupuesto.",
-      action: "Crear campana",
-    },
-  ];
+  const { data: healthScore } = trpc.healthScore.getCurrent.useQuery();
+  const { data: insights, isLoading } = trpc.reports.getInsights.useQuery();
+
+  const recommendations = useMemo(() => {
+    const recs: Array<{ severity: string; title: string; description: string; action: string }> = [];
+
+    // From health score recommendations
+    const hsRecs = (healthScore?.recommendations ?? []) as Array<{ title?: string; description?: string; severity?: string }>;
+    for (const r of hsRecs) {
+      recs.push({
+        severity: r.severity ?? "warning",
+        title: r.title ?? "Recomendacion",
+        description: r.description ?? "",
+        action: "Ver detalles",
+      });
+    }
+
+    // From AI memory insights
+    if (insights) {
+      for (const i of insights) {
+        recs.push({
+          severity: "opportunity",
+          title: i.key,
+          description: typeof i.value === "string" ? i.value : JSON.stringify(i.value),
+          action: "Explorar",
+        });
+      }
+    }
+
+    // If no data, show helpful empty-ish state
+    if (recs.length === 0) {
+      // Generate recommendations from health score pillars
+      if (healthScore) {
+        const pillars = [
+          { name: "Ad Performance", score: healthScore.adPerformance },
+          { name: "Content Engagement", score: healthScore.contentEngagement },
+          { name: "Email Effectiveness", score: healthScore.emailEffectiveness },
+          { name: "Lead Conversion", score: healthScore.leadConversion },
+          { name: "Revenue Attribution", score: healthScore.revenueAttribution },
+        ];
+        for (const p of pillars) {
+          if (p.score < 50) {
+            recs.push({
+              severity: "critical",
+              title: `${p.name} necesita atencion`,
+              description: `Tu score de ${p.name} es ${p.score}/100. Revisa esta area para mejorar.`,
+              action: "Ver Health Score",
+            });
+          } else if (p.score < 70) {
+            recs.push({
+              severity: "warning",
+              title: `${p.name} puede mejorar`,
+              description: `Tu score de ${p.name} es ${p.score}/100. Hay oportunidad de mejora.`,
+              action: "Optimizar",
+            });
+          }
+        }
+      }
+    }
+
+    return recs;
+  }, [healthScore, insights]);
 
   const severityColors: Record<string, string> = {
     critical: "#ef4444",
@@ -2299,89 +2865,168 @@ export function RecomendacionesIAPage() {
         title="Recomendaciones IA"
         description="Acciones sugeridas basadas en el analisis de tus datos"
       />
-      <div className="space-y-3">
-        {recommendations.map((rec, i) => (
-          <div
-            key={i}
-            className="rounded-lg border p-4 flex items-start gap-4"
-            style={{
-              backgroundColor: "#1e1e1e",
-              borderColor: severityColors[rec.severity] + "40",
-            }}
-          >
+      {isLoading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-20 rounded-lg bg-[#1e1e1e] animate-pulse" />
+          ))}
+        </div>
+      ) : recommendations.length === 0 ? (
+        <EmptyState
+          title="Sin recomendaciones"
+          description="Calcula tu Health Score y conecta plataformas para recibir recomendaciones personalizadas."
+          icon={<Lightbulb size={24} className="text-[#888]" />}
+        />
+      ) : (
+        <div className="space-y-3">
+          {recommendations.map((rec, i) => (
             <div
-              className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
-              style={{ backgroundColor: severityColors[rec.severity] }}
-            />
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <h4 className="text-[13px] font-medium text-[#ededed]">{rec.title}</h4>
-                <Badge
-                  text={rec.severity === "critical" ? "Critico" : rec.severity === "warning" ? "Atencion" : "Oportunidad"}
-                  color={severityColors[rec.severity]}
-                />
-              </div>
-              <p className="text-[12px] text-[#888]">{rec.description}</p>
-            </div>
-            <button
-              className="text-[11px] px-3 py-1.5 rounded border border-[#333] text-[#ccc] hover:border-[#555] transition-colors flex-shrink-0"
+              key={i}
+              className="rounded-lg border p-4 flex items-start gap-4"
+              style={{
+                backgroundColor: "#1e1e1e",
+                borderColor: (severityColors[rec.severity] ?? "#333") + "40",
+              }}
             >
-              {rec.action}
-            </button>
-          </div>
-        ))}
-      </div>
+              <div
+                className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
+                style={{ backgroundColor: severityColors[rec.severity] ?? "#888" }}
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <h4 className="text-[13px] font-medium text-[#ededed]">{rec.title}</h4>
+                  <Badge
+                    text={rec.severity === "critical" ? "Critico" : rec.severity === "warning" ? "Atencion" : "Oportunidad"}
+                    color={severityColors[rec.severity] ?? "#888"}
+                  />
+                </div>
+                <p className="text-[12px] text-[#888]">{rec.description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </>
   );
 }
 
 export function DigestDiarioPage() {
+  const { data: contactsData } = trpc.contacts.list.useQuery({ page: 1, limit: 1 });
+  const { data: dealStats } = trpc.deals.getStats.useQuery();
+  const { data: activities } = trpc.activities.list.useQuery({ page: 1, limit: 10 });
+  const { data: integrations } = trpc.integrations.list.useQuery();
+  const { data: healthScore } = trpc.healthScore.getCurrent.useQuery();
+  const { data: notifications } = trpc.notifications.list.useQuery({ limit: 5 });
+
+  const today = new Date().toLocaleDateString("es-CR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const contactCount = contactsData?.total ?? 0;
+  const totalDeals = dealStats?.totalDeals ?? 0;
+  const totalValue = dealStats?.totalValue ?? 0;
+  const winRate = dealStats?.winRate ?? 0;
+  const activeIntegrations = integrations?.filter((i) => i.status === "active").length ?? 0;
+  const recentActivities = activities?.activities ?? [];
+
   return (
     <>
       <SectionHeader
         title="Digest Diario"
-        description="Resumen automatico de lo que paso en las ultimas 24 horas"
+        description="Resumen de tu plataforma"
       />
       <div className="space-y-4">
+        {/* Date header */}
         <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
           <div className="flex items-center gap-2 mb-3">
             <Newspaper size={14} className="text-[#3ecf8e]" />
-            <span className="text-[13px] font-medium text-[#ededed]">Hoy, 15 de marzo 2026</span>
+            <span className="text-[13px] font-medium text-[#ededed] capitalize">{today}</span>
           </div>
           <div className="space-y-3 text-[13px] text-[#ccc]">
             <div className="flex items-start gap-2">
               <div className="w-1.5 h-1.5 rounded-full bg-[#3ecf8e] mt-1.5" />
-              <p><strong>+23 leads nuevos</strong> — 8 HOT, 10 WARM, 5 COLD. Fuente principal: Meta Ads (65%)</p>
-            </div>
-            <div className="flex items-start gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#f59e0b] mt-1.5" />
-              <p><strong>Campana "Promo Marzo"</strong> alcanzo 15,000 impresiones con CTR de 2.8%</p>
+              <p><strong>{contactCount} contactos</strong> en tu base de datos</p>
             </div>
             <div className="flex items-start gap-2">
               <div className="w-1.5 h-1.5 rounded-full bg-[#6366f1] mt-1.5" />
-              <p><strong>3 deals cerrados</strong> por un total de $2,400. Pipeline value: $18,500</p>
+              <p><strong>{totalDeals} deals</strong> activos con valor total de <strong>${totalValue.toLocaleString()}</strong>. Win rate: {(winRate * 100).toFixed(1)}%</p>
             </div>
             <div className="flex items-start gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#ef4444] mt-1.5" />
-              <p><strong>Alerta:</strong> Email bounce rate subio a 4.2% — verificar lista de contactos</p>
+              <div className="w-1.5 h-1.5 rounded-full bg-[#f59e0b] mt-1.5" />
+              <p><strong>{activeIntegrations} integraciones</strong> activas de {integrations?.length ?? 0} conectadas</p>
             </div>
+            {healthScore && (
+              <div className="flex items-start gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-[#06b6d4] mt-1.5" />
+                <p>Health Score: <strong>{healthScore.overallScore}/100</strong></p>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Recent activity */}
+        {recentActivities.length > 0 && (
+          <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+            <h3 className="text-[13px] font-medium text-[#ededed] mb-3">Actividad reciente</h3>
+            <div className="space-y-2">
+              {recentActivities.slice(0, 5).map((a) => (
+                <div key={a.id} className="flex items-center gap-2 text-[12px] text-[#ccc]">
+                  <Activity size={12} className="text-[#555] flex-shrink-0" />
+                  <Badge text={a.type.replace(/_/g, " ")} color="#6366f1" />
+                  {a.subject && <span className="text-[#888] truncate">{a.subject}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Notifications */}
+        {notifications && notifications.length > 0 && (
+          <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+            <h3 className="text-[13px] font-medium text-[#ededed] mb-3">Notificaciones</h3>
+            <div className="space-y-2">
+              {notifications.map((n) => (
+                <div key={n.id} className="flex items-start gap-2 text-[12px]">
+                  <div className={`w-1.5 h-1.5 rounded-full mt-1.5 ${n.read ? "bg-[#555]" : "bg-[#3ecf8e]"}`} />
+                  <div>
+                    <p className="text-[#ededed] font-medium">{n.title}</p>
+                    <p className="text-[#888]">{n.body}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
 }
 
 export function ConectarPlataformaPage() {
-  const platforms = [
-    { name: "Meta Ads", status: "connected", icon: "M", color: "#1877F2" },
-    { name: "Google Ads", status: "connected", icon: "G", color: "#4285F4" },
-    { name: "TikTok Ads", status: "available", icon: "T", color: "#000000" },
-    { name: "Google Analytics 4", status: "available", icon: "A", color: "#E37400" },
-    { name: "Stripe", status: "available", icon: "S", color: "#635BFF" },
-    { name: "Shopify", status: "available", icon: "S", color: "#95BF47" },
-    { name: "WhatsApp Business", status: "available", icon: "W", color: "#25D366" },
-    { name: "LinkedIn", status: "available", icon: "L", color: "#0A66C2" },
+  const { data: integrations, isLoading } = trpc.integrations.list.useQuery();
+  const utils = trpc.useUtils();
+
+  const startOAuth = trpc.integrations.startOAuth.useMutation({
+    onSuccess: (data) => {
+      window.open(data.authUrl, "_blank");
+    },
+  });
+  const disconnect = trpc.integrations.disconnect.useMutation({
+    onSuccess: () => { utils.integrations.list.invalidate(); },
+  });
+  const syncNow = trpc.integrations.syncNow.useMutation();
+
+  const connectedMap = useMemo(() => {
+    const map = new Map<string, { id: string; status: string; lastSyncAt: Date | null }>();
+    for (const i of integrations ?? []) {
+      map.set(i.platform, { id: i.id, status: i.status, lastSyncAt: i.lastSyncAt });
+    }
+    return map;
+  }, [integrations]);
+
+  const allPlatforms = [
+    { name: "Meta Ads", provider: "meta_ads" as const, icon: "M", color: "#1877F2" },
+    { name: "Google Ads", provider: "google_ads" as const, icon: "G", color: "#4285F4" },
+    { name: "TikTok Ads", provider: "tiktok" as const, icon: "T", color: "#000000" },
+    { name: "Google Analytics 4", provider: "ga4" as const, icon: "A", color: "#E37400" },
+    { name: "Shopify", provider: "shopify" as const, icon: "S", color: "#95BF47" },
   ];
 
   return (
@@ -2390,57 +3035,159 @@ export function ConectarPlataformaPage() {
         title="Conectar Plataforma"
         description="Conecta tus plataformas de marketing para centralizar datos"
       />
-      <div className="grid grid-cols-2 gap-3">
-        {platforms.map((p) => (
-          <div
-            key={p.name}
-            className="rounded-lg border border-[#2e2e2e] p-4 flex items-center gap-3"
-            style={{ backgroundColor: "#1e1e1e" }}
-          >
-            <div
-              className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-[14px]"
-              style={{ backgroundColor: p.color }}
-            >
-              {p.icon}
-            </div>
-            <div className="flex-1">
-              <p className="text-[13px] font-medium text-[#ededed]">{p.name}</p>
-              <p className="text-[11px] text-[#888]">
-                {p.status === "connected" ? "Conectado" : "Disponible"}
-              </p>
-            </div>
-            <button
-              className={`text-[11px] px-3 py-1.5 rounded transition-colors ${
-                p.status === "connected"
-                  ? "border border-[#3ecf8e]/30 text-[#3ecf8e]"
-                  : "border border-[#333] text-[#ccc] hover:border-[#555]"
-              }`}
-            >
-              {p.status === "connected" ? "Conectado" : "Conectar"}
-            </button>
-          </div>
-        ))}
-      </div>
+      {isLoading ? (
+        <div className="grid grid-cols-2 gap-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="h-20 rounded-lg bg-[#1e1e1e] animate-pulse" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          {allPlatforms.map((p) => {
+            const connected = connectedMap.get(p.provider);
+            const isActive = connected?.status === "active";
+            return (
+              <div
+                key={p.name}
+                className="rounded-lg border border-[#2e2e2e] p-4 flex items-center gap-3"
+                style={{ backgroundColor: "#1e1e1e" }}
+              >
+                <div
+                  className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-[14px]"
+                  style={{ backgroundColor: p.color }}
+                >
+                  {p.icon}
+                </div>
+                <div className="flex-1">
+                  <p className="text-[13px] font-medium text-[#ededed]">{p.name}</p>
+                  <p className="text-[11px] text-[#888]">
+                    {isActive ? "Conectado" : connected ? "Desconectado" : "Disponible"}
+                    {connected?.lastSyncAt && ` · Sync: ${new Date(connected.lastSyncAt).toLocaleDateString()}`}
+                  </p>
+                </div>
+                <div className="flex gap-1.5">
+                  {isActive ? (
+                    <>
+                      <button
+                        onClick={() => syncNow.mutate({ integrationId: connected!.id })}
+                        disabled={syncNow.isPending}
+                        className="text-[10px] px-2 py-1 rounded border border-[#333] text-[#ccc] hover:border-[#555] transition-colors"
+                      >
+                        Sync
+                      </button>
+                      <button
+                        onClick={() => disconnect.mutate({ integrationId: connected!.id })}
+                        disabled={disconnect.isPending}
+                        className="text-[10px] px-2 py-1 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
+                      >
+                        Desconectar
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => startOAuth.mutate({ provider: p.provider })}
+                      disabled={startOAuth.isPending}
+                      className="text-[11px] px-3 py-1.5 rounded border border-[#333] text-[#ccc] hover:border-[#3ecf8e]/40 hover:text-[#3ecf8e] transition-colors"
+                    >
+                      {startOAuth.isPending ? "..." : "Conectar"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </>
   );
 }
 
 export function GenerarReportePage() {
+  const [fromDate, setFromDate] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1);
+    return d.toISOString().split("T")[0];
+  });
+  const [toDate, setToDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [generated, setGenerated] = useState(false);
+
+  const generateMutation = trpc.reports.generate.useMutation({
+    onSuccess: (data) => {
+      setGenerated(true);
+      // Download the PDF
+      const link = document.createElement("a");
+      link.href = `data:application/pdf;base64,${data.pdf}`;
+      link.download = data.filename;
+      link.click();
+    },
+  });
+
   return (
     <>
       <SectionHeader
         title="Generar Reporte"
         description="Crea reportes personalizados de tus metricas"
       />
+
+      {/* Date range selection */}
+      <div className="rounded-lg border border-[#2e2e2e] p-4 mb-6" style={{ backgroundColor: "#1e1e1e" }}>
+        <h3 className="text-[13px] font-medium text-[#ededed] mb-3">Periodo del reporte</h3>
+        <div className="flex items-center gap-4">
+          <div>
+            <label className="block text-[11px] text-[#888] mb-1">Desde</label>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="h-[36px] px-3 rounded-lg border border-[#333] bg-[#222] text-[13px] text-[#ededed] outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] text-[#888] mb-1">Hasta</label>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className="h-[36px] px-3 rounded-lg border border-[#333] bg-[#222] text-[13px] text-[#ededed] outline-none"
+            />
+          </div>
+          <div className="pt-4">
+            <button
+              onClick={() => generateMutation.mutate({ from: new Date(fromDate!), to: new Date(toDate!) })}
+              disabled={generateMutation.isPending}
+              className="flex items-center gap-1.5 text-[12px] text-black px-4 py-2 rounded-lg font-medium disabled:opacity-50"
+              style={{ backgroundColor: "#3ecf8e" }}
+            >
+              {generateMutation.isPending ? "Generando..." : "Generar PDF"}
+            </button>
+          </div>
+        </div>
+        {generateMutation.error && (
+          <p className="text-[12px] text-red-400 mt-2">{generateMutation.error.message}</p>
+        )}
+        {generated && (
+          <p className="text-[12px] text-[#3ecf8e] mt-2">Reporte descargado exitosamente.</p>
+        )}
+      </div>
+
+      {/* Quick reports */}
+      <h3 className="text-[13px] font-medium text-[#ededed] mb-3">Reportes rapidos</h3>
       <div className="grid grid-cols-3 gap-4">
         {[
-          { title: "Resumen Ejecutivo", desc: "Vision general de todas las metricas clave", icon: <FileText size={20} /> },
-          { title: "Rendimiento de Ads", desc: "Analisis detallado de campanas publicitarias", icon: <BarChart3 size={20} /> },
-          { title: "Pipeline de Ventas", desc: "Estado del pipeline y deals activos", icon: <Layers size={20} /> },
+          { title: "Resumen Ejecutivo", desc: "Vision general de todas las metricas clave", icon: <FileText size={20} />, days: 30 },
+          { title: "Rendimiento de Ads", desc: "Analisis detallado de campanas publicitarias", icon: <BarChart3 size={20} />, days: 7 },
+          { title: "Pipeline de Ventas", desc: "Estado del pipeline y deals activos", icon: <Layers size={20} />, days: 30 },
         ].map((r) => (
           <button
             key={r.title}
-            className="rounded-lg border border-[#2e2e2e] p-6 text-left hover:border-[#3ecf8e]/40 transition-colors"
+            onClick={() => {
+              const to = new Date();
+              const from = new Date();
+              from.setDate(from.getDate() - r.days);
+              generateMutation.mutate({ from, to });
+            }}
+            disabled={generateMutation.isPending}
+            className="rounded-lg border border-[#2e2e2e] p-6 text-left hover:border-[#3ecf8e]/40 transition-colors disabled:opacity-50"
             style={{ backgroundColor: "#1e1e1e" }}
           >
             <div className="text-[#888] mb-3">{r.icon}</div>

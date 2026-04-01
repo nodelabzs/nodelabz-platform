@@ -2,7 +2,7 @@ import { task, logger } from "@trigger.dev/sdk";
 import { prisma } from "@nodelabz/db";
 import { Prisma } from "@nodelabz/db";
 
-const GOOGLE_ADS_API_VERSION = "v18";
+const GOOGLE_ADS_API_VERSION = "v19";
 
 interface GoogleAdsRow {
   campaign: {

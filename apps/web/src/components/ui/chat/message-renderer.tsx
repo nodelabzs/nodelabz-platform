@@ -1,6 +1,7 @@
 "use client";
 
 import type { ChatMessage, ChatArtifact } from "@nodelabz/shared-types";
+import { MarkdownContent } from "./markdown-content";
 import { ChartMessage } from "./chart-message";
 import { WorkflowPreview } from "./workflow-preview";
 import { ToolCallIndicator } from "./tool-call-indicator";
@@ -30,7 +31,7 @@ export function MessageRenderer({
               backgroundColor: isUser ? "#3ecf8e" : "#2a2a2a",
             }}
           >
-            {message.content}
+            {isUser ? message.content : <MarkdownContent content={message.content} />}
           </div>
         )}
 

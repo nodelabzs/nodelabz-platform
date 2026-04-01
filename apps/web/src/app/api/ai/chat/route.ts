@@ -22,7 +22,7 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const { message, conversationId, section, mcpServers, plan } = body;
+  const { message, conversationId, section, mcpServers, plan, history } = body;
 
   if (!message || typeof message !== "string" || message.length > 4000) {
     return new Response("Invalid message", { status: 400 });
@@ -45,6 +45,7 @@ export async function POST(req: Request) {
         mcp_servers: mcpServers || [],
         plan: plan || dbUser.tenant.plan,
         language: dbUser.tenant.language || "es",
+        history: history || [],
       }),
     });
 

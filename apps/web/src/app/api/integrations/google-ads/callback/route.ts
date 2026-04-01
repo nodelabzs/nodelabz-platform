@@ -32,14 +32,20 @@ export async function GET(request: NextRequest) {
     const { accessToken, refreshToken, expiresIn } =
       await exchangeCodeForTokens(googleAdsOAuthConfig, code);
 
-    // 3. Get accessible customer IDs
-    const customerIds = await getAdCustomerIds(accessToken);
+    // 3. Try to get accessible customer IDs (requires developer token)
+    let customerIds: string[] = [];
+    try {
+      customerIds = await getAdCustomerIds(accessToken);
+    } catch {
+      // Developer token may not be set — continue without customer IDs
+      console.warn("[Google Ads] Could not fetch customer IDs (developer token may be missing)");
+    }
 
     // 4. Store integration in database
     const expiresAt = expiresIn
       ? new Date(Date.now() + expiresIn * 1000)
       : new Date(Date.now() + 3600 * 1000); // default 1 hour
-    const primaryCustomerId = customerIds[0] || "";
+    const primaryCustomerId = customerIds[0] || "pending";
 
     await prisma.integration.upsert({
       where: {

@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack --port 3000",
+    "dev": "next dev --turbopack --experimental-https --port 3000",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -42,6 +42,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-grid-layout": "^2.2.2",
+    "react-markdown": "^10.1.0",
     "recharts": "^3.8.0",
     "resend": "^6.9.4",
     "stripe": "^20.4.1",

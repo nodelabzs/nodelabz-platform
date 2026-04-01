@@ -14,6 +14,7 @@ import {
 } from "@/server/integrations/google/auth";
 import { buildTikTokAuthUrl } from "@/server/integrations/tiktok/auth";
 import { buildShopifyAuthUrl } from "@/server/integrations/shopify/auth";
+import { syncIntegration, syncAllIntegrations } from "@/server/integrations/sync";
 
 export const integrationsRouter = router({
   /**
@@ -117,8 +118,8 @@ export const integrationsRouter = router({
     }),
 
   /**
-   * Trigger a sync for an integration.
-   * For now, just updates lastSyncAt (actual sync worker comes later).
+   * Trigger a real sync for a single integration.
+   * Fetches data from the platform API and stores in campaign_metrics.
    */
   syncNow: tenantProcedure
     .input(z.object({ integrationId: z.string().uuid() }))
@@ -137,12 +138,25 @@ export const integrationsRouter = router({
         });
       }
 
-      await prisma.integration.update({
-        where: { id: input.integrationId },
-        data: { lastSyncAt: new Date() },
-      });
+      const result = await syncIntegration(ctx.effectiveTenantId, input.integrationId);
 
-      return { triggered: true };
+      if (!result.success) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: result.error || "Sync failed",
+        });
+      }
+
+      return { triggered: true, synced: result.synced ?? 0 };
+    }),
+
+  /**
+   * Sync all active integrations for the current tenant.
+   */
+  syncAll: tenantProcedure
+    .mutation(async ({ ctx }) => {
+      const { results } = await syncAllIntegrations(ctx.effectiveTenantId);
+      return { results };
     }),
 
   /**

@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
 import { useChatStore } from "@/stores/chat-store";
+import { trpc } from "@/lib/trpc";
 import type { AiSection } from "@nodelabz/shared-types";
 import { SECTION_TOOLS } from "@nodelabz/shared-types";
 
@@ -18,6 +19,9 @@ export function useChatStream() {
     finishStreaming,
     setStreamError,
   } = useChatStore();
+
+  const saveMessageMutation = trpc.conversation.saveMessage.useMutation();
+  const createConversationMutation = trpc.conversation.create.useMutation();
 
   const sendMessage = useCallback(
     async (message: string) => {
@@ -38,6 +42,10 @@ export function useChatStream() {
             section: activeSection,
             mcpServers: SECTION_TOOLS[activeSection as AiSection] || [],
             plan,
+            history: useChatStore.getState().messages
+              .filter((m) => m.role === "user" || m.role === "assistant")
+              .slice(-10)
+              .map((m) => ({ role: m.role, content: m.content })),
           }),
           signal: controller.signal,
         });
@@ -88,9 +96,26 @@ export function useChatStream() {
                     payload: event.payload,
                   });
                   break;
-                case "done":
+                case "done": {
                   finishStreaming(event.messageId, event.conversationId);
+                  // Persist messages
+                  const convId = event.conversationId || conversationId;
+                  if (convId) {
+                    const state = useChatStore.getState();
+                    const fullText = state.streamingContent || state.messages[state.messages.length - 1]?.content || "";
+                    try {
+                      // Save user message
+                      saveMessageMutation.mutate({ conversationId: convId, role: "user", content: message });
+                      // Save assistant response
+                      if (fullText) {
+                        saveMessageMutation.mutate({ conversationId: convId, role: "assistant", content: fullText });
+                      }
+                    } catch {
+                      // Silent fail — persistence is best-effort
+                    }
+                  }
                   return;
+                }
                 case "error":
                   setStreamError(event.message);
                   return;

@@ -17,7 +17,7 @@ export const emailCampaignsRouter = router({
     // Fetch template names for all campaigns
     const templateIds = [...new Set(campaigns.map((c) => c.templateId))];
     const templates = await prisma.emailTemplate.findMany({
-      where: { id: { in: templateIds } },
+      where: { id: { in: templateIds }, tenantId: ctx.effectiveTenantId },
       select: { id: true, name: true },
     });
     const templateMap = new Map(templates.map((t) => [t.id, t.name]));

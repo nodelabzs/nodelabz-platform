@@ -75,7 +75,7 @@ export async function getAdCustomerIds(
   accessToken: string
 ): Promise<string[]> {
   const response = await fetch(
-    "https://googleads.googleapis.com/v18/customers:listAccessibleCustomers",
+    "https://googleads.googleapis.com/v19/customers:listAccessibleCustomers",
     {
       headers: {
         Authorization: `Bearer ${accessToken}`,

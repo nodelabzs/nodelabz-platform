@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { prisma } from "@nodelabz/db";
 import { router, tenantProcedure } from "../init";
+import { invokeModel } from "@/server/ai/router";
 
 // ── Inline health score calculation (mirrors worker logic) ─────────────
 
@@ -174,72 +175,99 @@ async function calculateHealthScore(tenantId: string) {
       revenueAttribution * 0.15
   );
 
-  // ── Insights ─────────────────────────────────────────────────────────
-  const insights: string[] = [];
-  if (adPerformance < 30)
-    insights.push("Conecta plataformas de ads para mejorar tu visibilidad");
-  if (contentEngagement < 30)
-    insights.push("Activa email marketing y WhatsApp para engagement");
-  if (emailEffectiveness < 30)
-    insights.push("Crea plantillas de email y automatizaciones");
-  if (leadConversion < 30)
-    insights.push("Importa contactos y configura tu pipeline");
-  if (revenueAttribution < 30)
-    insights.push("Conecta Stripe para atribuir revenue a canales");
+  // ── AI-Powered Insights & Recommendations ────────────────────────────
+  // Gather campaign data summary for AI context
+  const totalSpend = campaignMetrics.reduce((s, m) => s + Number(m.spend), 0);
+  const totalRevenue = campaignMetrics.reduce((s, m) => s + Number(m.revenue), 0);
+  const totalConversions = campaignMetrics.reduce((s, m) => s + m.conversions, 0);
+  const avgRoas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
 
-  // ── Recommendations ──────────────────────────────────────────────────
-  const pillarScores = [
-    {
-      score: adPerformance,
-      rec: {
-        title: "Conectar plataformas de publicidad",
-        description:
-          "Integra Meta Ads, Google Ads o TikTok para trackear el rendimiento de tus campanas en tiempo real.",
-        impact: "high" as const,
-      },
-    },
-    {
-      score: contentEngagement,
-      rec: {
-        title: "Activar canales de engagement",
-        description:
-          "Configura email marketing y WhatsApp Business para comunicarte con tus leads de forma automatizada.",
-        impact: "high" as const,
-      },
-    },
-    {
-      score: emailEffectiveness,
-      rec: {
-        title: "Crear campanas de email",
-        description:
-          "Disena plantillas de email, crea automatizaciones y lanza campanas para nutrir tus leads.",
-        impact: "medium" as const,
-      },
-    },
-    {
-      score: leadConversion,
-      rec: {
-        title: "Optimizar pipeline de ventas",
-        description:
-          "Importa contactos, configura tu pipeline y registra deals para mejorar la conversion.",
-        impact: "high" as const,
-      },
-    },
-    {
-      score: revenueAttribution,
-      rec: {
-        title: "Atribuir revenue a canales",
-        description:
-          "Conecta Stripe y vincula revenue a campanas para entender que canal genera mas ROI.",
-        impact: "medium" as const,
-      },
-    },
-  ];
+  const platformBreakdown: Record<string, { spend: number; revenue: number; conversions: number }> = {};
+  for (const m of campaignMetrics) {
+    const p = platformBreakdown[m.platform] ?? { spend: 0, revenue: 0, conversions: 0 };
+    p.spend += Number(m.spend);
+    p.revenue += Number(m.revenue);
+    p.conversions += m.conversions;
+    platformBreakdown[m.platform] = p;
+  }
 
-  const recommendations = pillarScores
-    .sort((a, b) => a.score - b.score)
-    .slice(0, 3)
-    .map((p) => p.rec);
+  const aiPrompt = `Eres un consultor experto en marketing digital para agencias en Latinoamerica.
+Analiza estos datos de la empresa y genera recomendaciones accionables.
+
+HEALTH SCORE: ${overallScore}/100
+- Rendimiento de Ads: ${adPerformance}/100
+- Engagement de Contenido: ${contentEngagement}/100
+- Efectividad de Email: ${emailEffectiveness}/100
+- Conversion de Leads: ${leadConversion}/100
+- Atribucion de Revenue: ${revenueAttribution}/100
+
+DATOS REALES (ultimos 30 dias):
+- Contactos totales: ${contactCount}
+- Deals: ${dealCount} (ganados: ${wonDeals})
+- Gasto total en ads: $${totalSpend.toFixed(2)}
+- Revenue total: $${totalRevenue.toFixed(2)}
+- Conversiones: ${totalConversions}
+- ROAS promedio: ${avgRoas.toFixed(2)}x
+- Campanas de email enviadas: ${sentCampaigns}
+- Plantillas de email: ${templateCount}
+- Workflows activos: ${activeWorkflows}
+- Integraciones de ads activas: ${activeAdIntegrations}
+- Mensajes WhatsApp: ${whatsappMessages}
+${Object.keys(platformBreakdown).length > 0 ? "\nPOR PLATAFORMA:\n" + Object.entries(platformBreakdown).map(([p, d]) => `- ${p}: gasto=$${d.spend.toFixed(2)}, revenue=$${d.revenue.toFixed(2)}, conversiones=${d.conversions}`).join("\n") : ""}
+
+Responde UNICAMENTE con JSON valido, sin markdown ni texto adicional:
+{
+  "insights": ["string", "string", "string"],
+  "recommendations": [
+    { "title": "string", "description": "string", "priority": "high|medium|low" },
+    { "title": "string", "description": "string", "priority": "high|medium|low" },
+    { "title": "string", "description": "string", "priority": "high|medium|low" }
+  ]
+}
+
+Reglas:
+- 3 insights cortos (1 frase cada uno) describiendo el estado actual
+- 3 recomendaciones especificas y accionables para esta empresa
+- Prioridad basada en impacto potencial
+- Todo en español
+- Si no hay datos de campanas, recomienda conectar plataformas y lanzar campanas`;
+
+  let insights: string[] = [];
+  let recommendations: Array<{ title: string; description: string; priority: string }> = [];
+
+  try {
+    const aiResponse = await invokeModel({
+      message: aiPrompt,
+      tier: "sonnet",
+      maxTokens: 1024,
+      systemPrompt: "Eres un experto en marketing digital. Responde SOLO con JSON valido.",
+    });
+
+    // Parse AI response — handle potential markdown wrapping
+    const jsonStr = aiResponse.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const parsed = JSON.parse(jsonStr);
+    insights = parsed.insights ?? [];
+    recommendations = parsed.recommendations ?? [];
+  } catch (error) {
+    console.error("[Health Score] AI recommendation generation failed:", error);
+    // Fallback to rule-based if AI fails
+    if (adPerformance < 30) insights.push("Conecta plataformas de ads para mejorar tu visibilidad");
+    if (contentEngagement < 30) insights.push("Activa email marketing y WhatsApp para engagement");
+    if (leadConversion < 30) insights.push("Importa contactos y configura tu pipeline");
+    if (insights.length === 0) insights.push("Recalcula regularmente para monitorear tu progreso");
+
+    const fallbackPillars = [
+      { score: adPerformance, title: "Mejorar rendimiento de ads", description: "Conecta y optimiza tus plataformas de publicidad.", priority: "high" },
+      { score: contentEngagement, title: "Aumentar engagement", description: "Activa email y WhatsApp para comunicarte con leads.", priority: "medium" },
+      { score: emailEffectiveness, title: "Lanzar campanas de email", description: "Crea plantillas y automatizaciones de email.", priority: "medium" },
+      { score: leadConversion, title: "Optimizar conversion", description: "Configura tu pipeline y registra deals.", priority: "high" },
+      { score: revenueAttribution, title: "Atribuir revenue", description: "Conecta Stripe para medir ROI por canal.", priority: "low" },
+    ];
+    recommendations = fallbackPillars
+      .sort((a, b) => a.score - b.score)
+      .slice(0, 3)
+      .map(({ title, description, priority }) => ({ title, description, priority }));
+  }
 
   // ── Store ────────────────────────────────────────────────────────────
   const healthScore = await prisma.healthScore.create({

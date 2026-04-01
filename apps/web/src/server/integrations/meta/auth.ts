@@ -8,7 +8,7 @@ export const metaOAuthConfig: OAuthConfig = {
   tokenUrl: "https://graph.facebook.com/v21.0/oauth/access_token",
   clientId: process.env.META_APP_ID || "",
   clientSecret: process.env.META_APP_SECRET || "",
-  scopes: ["ads_read", "ads_management", "pages_read_engagement", "read_insights"],
+  scopes: ["ads_read", "ads_management"],
   redirectUri: `${APP_URL}/api/integrations/meta/callback`,
 };
 

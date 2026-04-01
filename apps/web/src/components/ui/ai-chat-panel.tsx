@@ -2,6 +2,7 @@
 
 import { useRef, useEffect, useState } from "react";
 import { X, Send, Sparkles, Plus, Loader2 } from "lucide-react";
+import { MarkdownContent } from "./chat/markdown-content";
 import { useChatStore } from "@/stores/chat-store";
 import { useChatStream } from "@/hooks/use-chat-stream";
 import type { AiSection, ChatArtifact, PlanName } from "@nodelabz/shared-types";
@@ -134,10 +135,10 @@ export function AiChatPanel({
               )}
               {streamingContent ? (
                 <div
-                  className="rounded-lg px-3 py-2 text-[13px] leading-relaxed text-[#ccc]"
+                  className="rounded-lg px-3 py-2 text-[13px] leading-relaxed text-[#ccc] ai-markdown"
                   style={{ backgroundColor: "#2a2a2a" }}
                 >
-                  {streamingContent}
+                  <MarkdownContent content={streamingContent} />
                   <span className="inline-block w-1.5 h-3.5 bg-[#3ecf8e] animate-pulse ml-0.5 align-middle" />
                 </div>
               ) : (
