@@ -3,6 +3,7 @@ import { router, tenantProcedure } from "../init";
 import { prisma } from "@nodelabz/db";
 import { TRPCError } from "@trpc/server";
 import { Prisma } from "@nodelabz/db";
+import { buildCsvString } from "./csv-utils";
 
 export const dealsRouter = router({
   list: tenantProcedure
@@ -203,6 +204,53 @@ export const dealsRouter = router({
 
       await prisma.deal.delete({ where: { id: input.dealId } });
       return { success: true };
+    }),
+
+  exportCSV: tenantProcedure
+    .input(
+      z
+        .object({
+          pipelineId: z.string().uuid().optional(),
+          stageId: z.string().optional(),
+        })
+        .optional()
+    )
+    .query(async ({ ctx, input }) => {
+      const deals = await prisma.deal.findMany({
+        where: {
+          tenantId: ctx.effectiveTenantId,
+          ...(input?.pipelineId && { pipelineId: input.pipelineId }),
+          ...(input?.stageId && { stageId: input.stageId }),
+        },
+        include: { contact: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const headers = [
+        "Titulo",
+        "Valor",
+        "Moneda",
+        "Etapa",
+        "Probabilidad",
+        "Contacto",
+        "Email Contacto",
+        "Cerrado",
+        "Creado",
+      ];
+
+      const rows = deals.map((d) => [
+        d.title,
+        d.value ? String(d.value) : "",
+        d.currency,
+        d.stageId,
+        d.probability != null ? String(d.probability) : "",
+        [d.contact.firstName, d.contact.lastName].filter(Boolean).join(" "),
+        d.contact.email ?? "",
+        d.closedAt ? d.closedAt.toISOString() : "",
+        d.createdAt.toISOString(),
+      ]);
+
+      return { csv: buildCsvString(headers, rows) };
     }),
 
   getStats: tenantProcedure.query(async ({ ctx }) => {

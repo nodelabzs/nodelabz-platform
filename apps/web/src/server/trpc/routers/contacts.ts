@@ -3,6 +3,7 @@ import { router, tenantProcedure } from "../init";
 import { prisma } from "@nodelabz/db";
 import { TRPCError } from "@trpc/server";
 import { PLAN_LIMITS, type PlanName } from "@/server/stripe/plans";
+import { buildCsvString } from "./csv-utils";
 
 /**
  * Returns contact usage info for a tenant relative to their plan limit.
@@ -447,6 +448,181 @@ export const contactsRouter = router({
         capped,
         errors,
       };
+    }),
+
+  exportCSV: tenantProcedure
+    .input(
+      z
+        .object({
+          search: z.string().optional(),
+          scoreLabel: scoreLabelEnum.optional(),
+          tags: z.array(z.string()).optional(),
+        })
+        .optional()
+    )
+    .query(async ({ ctx, input }) => {
+      const where: Record<string, unknown> = {
+        tenantId: ctx.effectiveTenantId,
+      };
+
+      if (input?.search) {
+        where.OR = [
+          { firstName: { contains: input.search, mode: "insensitive" } },
+          { lastName: { contains: input.search, mode: "insensitive" } },
+          { email: { contains: input.search, mode: "insensitive" } },
+          { company: { contains: input.search, mode: "insensitive" } },
+        ];
+      }
+
+      if (input?.scoreLabel) {
+        where.scoreLabel = input.scoreLabel;
+      }
+
+      if (input?.tags && input.tags.length > 0) {
+        where.tags = { hasSome: input.tags };
+      }
+
+      const contacts = await prisma.contact.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+      });
+
+      const headers = [
+        "Nombre",
+        "Apellido",
+        "Email",
+        "Telefono",
+        "Empresa",
+        "Fuente",
+        "Score",
+        "Etiqueta",
+        "Tags",
+        "Creado",
+      ];
+
+      const rows = contacts.map((c) => [
+        c.firstName,
+        c.lastName ?? "",
+        c.email ?? "",
+        c.phone ?? "",
+        c.company ?? "",
+        c.source ?? "",
+        String(c.score),
+        c.scoreLabel,
+        (c.tags ?? []).join("; "),
+        c.createdAt.toISOString(),
+      ]);
+
+      return { csv: buildCsvString(headers, rows) };
+    }),
+
+  // ── Bulk operations ──────────────────────────────────────────────
+
+  bulkDelete: tenantProcedure
+    .input(
+      z.object({
+        ids: z.array(z.string().uuid()).min(1).max(500),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const result = await prisma.contact.deleteMany({
+        where: {
+          id: { in: input.ids },
+          tenantId: ctx.effectiveTenantId,
+        },
+      });
+
+      return { deleted: result.count };
+    }),
+
+  bulkTag: tenantProcedure
+    .input(
+      z.object({
+        ids: z.array(z.string().uuid()).min(1).max(500),
+        tags: z.array(z.string()),
+        action: z.enum(["add", "remove", "set"]),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const tenantId = ctx.effectiveTenantId;
+      const { ids, tags, action } = input;
+
+      if (action === "set") {
+        const result = await prisma.contact.updateMany({
+          where: { id: { in: ids }, tenantId },
+          data: { tags: { set: tags } },
+        });
+        return { updated: result.count };
+      }
+
+      // For "add" and "remove" we need per-contact tag manipulation
+      const contacts = await prisma.contact.findMany({
+        where: { id: { in: ids }, tenantId },
+        select: { id: true, tags: true },
+      });
+
+      if (contacts.length === 0) return { updated: 0 };
+
+      if (action === "remove") {
+        const removeSet = new Set(tags);
+        const updates = contacts.map((c) =>
+          prisma.contact.update({
+            where: { id: c.id },
+            data: { tags: c.tags.filter((t) => !removeSet.has(t)) },
+          })
+        );
+        await prisma.$transaction(updates);
+        return { updated: contacts.length };
+      }
+
+      // action === "add": append tags without duplicates
+      const updates = contacts.map((c) => {
+        const merged = Array.from(new Set([...c.tags, ...tags]));
+        return prisma.contact.update({
+          where: { id: c.id },
+          data: { tags: merged },
+        });
+      });
+      await prisma.$transaction(updates);
+      return { updated: contacts.length };
+    }),
+
+  bulkUpdateScore: tenantProcedure
+    .input(
+      z.object({
+        ids: z.array(z.string().uuid()).min(1).max(500),
+        scoreLabel: scoreLabelEnum,
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const result = await prisma.contact.updateMany({
+        where: {
+          id: { in: input.ids },
+          tenantId: ctx.effectiveTenantId,
+        },
+        data: { scoreLabel: input.scoreLabel },
+      });
+
+      return { updated: result.count };
+    }),
+
+  bulkAssign: tenantProcedure
+    .input(
+      z.object({
+        ids: z.array(z.string().uuid()).min(1).max(500),
+        assignedTo: z.string().nullable(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const result = await prisma.contact.updateMany({
+        where: {
+          id: { in: input.ids },
+          tenantId: ctx.effectiveTenantId,
+        },
+        data: { assignedTo: input.assignedTo },
+      });
+
+      return { updated: result.count };
     }),
 
   updateScore: tenantProcedure

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "@nodelabz/db";
 import { router, tenantProcedure } from "../init";
+import { processSequenceEnrollments } from "@/app/api/cron/process-sequences/route";
 
 const stepSchema = z.object({
   templateId: z.string().uuid(),
@@ -162,5 +163,21 @@ export const sequencesRouter = router({
         where: { sequenceId: input.sequenceId },
         orderBy: { createdAt: "desc" },
       });
+    }),
+
+  /**
+   * Manually trigger sequence processing for a specific sequence.
+   */
+  processNow: tenantProcedure
+    .input(z.object({ sequenceId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const sequence = await prisma.sequence.findFirst({
+        where: { id: input.sequenceId, tenantId: ctx.effectiveTenantId },
+      });
+      if (!sequence) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Secuencia no encontrada" });
+      }
+
+      return processSequenceEnrollments(input.sequenceId);
     }),
 });

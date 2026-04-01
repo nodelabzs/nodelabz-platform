@@ -5,6 +5,42 @@ import { router, tenantProcedure } from "../init";
 import { applyMergeTags } from "@/server/email/resend";
 import { sendEmail } from "@/server/email/ses";
 
+// ---------------------------------------------------------------------------
+// Email tracking injection
+// ---------------------------------------------------------------------------
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
+/**
+ * Inject open-tracking pixel and wrap links with click-tracking redirects.
+ */
+function injectTracking(
+  html: string,
+  campaignId: string,
+  email: string
+): string {
+  const eid = encodeURIComponent(email);
+
+  // 1. Wrap <a href="..."> links with click tracker (skip mailto: and #)
+  const tracked = html.replace(
+    /<a\s([^>]*?)href=["']([^"']+)["']/gi,
+    (_match: string, prefix: string, href: string) => {
+      if (href.startsWith("mailto:") || href.startsWith("#") || href.startsWith("{")) {
+        return `<a ${prefix}href="${href}"`;
+      }
+      const trackUrl = `${APP_URL}/api/track/click?cid=${campaignId}&eid=${eid}&url=${encodeURIComponent(href)}`;
+      return `<a ${prefix}href="${trackUrl}"`;
+    }
+  );
+
+  // 2. Inject tracking pixel before </body> or at the end
+  const pixel = `<img src="${APP_URL}/api/track/open?cid=${campaignId}&eid=${eid}" width="1" height="1" alt="" style="display:none" />`;
+  if (tracked.includes("</body>")) {
+    return tracked.replace("</body>", `${pixel}</body>`);
+  }
+  return tracked + pixel;
+}
+
 export const emailCampaignsRouter = router({
   /**
    * List all campaigns for the tenant, including the template name.
@@ -157,7 +193,8 @@ export const emailCampaignsRouter = router({
         };
 
         try {
-          const personalHtml = applyMergeTags(baseHtml, mergeFields);
+          const mergedHtml = applyMergeTags(baseHtml, mergeFields);
+          const personalHtml = injectTracking(mergedHtml, campaign.id, c.email!);
           const personalSubject = applyMergeTags(subject, mergeFields);
           await sendEmail(c.email!, personalSubject, personalHtml);
           sent++;
