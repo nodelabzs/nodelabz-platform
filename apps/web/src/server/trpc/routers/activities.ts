@@ -26,6 +26,18 @@ export const activitiesRouter = router({
           orderBy: { createdAt: "desc" },
           skip: (input.page - 1) * input.limit,
           take: input.limit,
+          include: {
+            contact: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                phone: true,
+                company: true,
+              },
+            },
+          },
         }),
         prisma.activity.count({ where }),
       ]);

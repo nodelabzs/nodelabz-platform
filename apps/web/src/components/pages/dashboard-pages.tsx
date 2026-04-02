@@ -67,6 +67,9 @@ import {
   Settings,
   RotateCcw,
   LayoutDashboard,
+  Download,
+  Calendar,
+  Loader2,
 } from "lucide-react";
 import {
   DndContext,
@@ -525,6 +528,7 @@ export function HomePage() {
 
             {/* 1: Connect ad platforms */}
             <button
+              onClick={() => window.dispatchEvent(new CustomEvent("dashboard:navigate", { detail: { section: "integrations", item: "Meta Ads" } }))}
               className="rounded-lg border border-[#2e2e2e] p-6 text-left hover:border-[#3ecf8e]/40 transition-colors group"
               style={{ backgroundColor: "#1e1e1e" }}
             >
@@ -621,7 +625,10 @@ export function HomePage() {
                     Conectada
                   </span>
                 ) : (
-                  <button className="text-[10px] px-2 py-0.5 rounded-full border border-[#333] text-[#888] hover:text-[#ccc] hover:border-[#555] transition-colors">
+                  <button
+                    onClick={() => window.dispatchEvent(new CustomEvent("dashboard:navigate", { detail: { section: "integrations", item: ch.name } }))}
+                    className="text-[10px] px-2 py-0.5 rounded-full border border-[#333] text-[#888] hover:text-[#ccc] hover:border-[#555] transition-colors"
+                  >
                     Conectar
                   </button>
                 )}
@@ -2792,17 +2799,27 @@ export function NodeMapPage() {
 }
 
 export function RecomendacionesIAPage() {
-  const { data: healthScore } = trpc.healthScore.getCurrent.useQuery();
-  const { data: insights, isLoading } = trpc.reports.getInsights.useQuery();
+  const { data: healthScore, isLoading: hsLoading } = trpc.healthScore.getCurrent.useQuery();
+  const { data: insights, isLoading: insightsLoading } = trpc.reports.getInsights.useQuery();
+  const recalculate = trpc.healthScore.recalculate.useMutation({
+    onSuccess: () => {
+      utils.healthScore.getCurrent.invalidate();
+      utils.reports.getInsights.invalidate();
+    },
+  });
+  const utils = trpc.useUtils();
+
+  const isLoading = hsLoading || insightsLoading;
 
   const recommendations = useMemo(() => {
-    const recs: Array<{ severity: string; title: string; description: string; action: string }> = [];
+    const recs: Array<{ priority: "high" | "medium" | "low"; title: string; description: string; action: string }> = [];
 
     // From health score recommendations
-    const hsRecs = (healthScore?.recommendations ?? []) as Array<{ title?: string; description?: string; severity?: string }>;
+    const hsRecs = (healthScore?.recommendations ?? []) as Array<{ title?: string; description?: string; severity?: string; priority?: string }>;
     for (const r of hsRecs) {
+      const sev = r.severity ?? r.priority ?? "warning";
       recs.push({
-        severity: r.severity ?? "warning",
+        priority: sev === "critical" ? "high" : sev === "warning" ? "medium" : "low",
         title: r.title ?? "Recomendacion",
         description: r.description ?? "",
         action: "Ver detalles",
@@ -2813,7 +2830,7 @@ export function RecomendacionesIAPage() {
     if (insights) {
       for (const i of insights) {
         recs.push({
-          severity: "opportunity",
+          priority: "low",
           title: i.key,
           description: typeof i.value === "string" ? i.value : JSON.stringify(i.value),
           action: "Explorar",
@@ -2821,45 +2838,61 @@ export function RecomendacionesIAPage() {
       }
     }
 
-    // If no data, show helpful empty-ish state
-    if (recs.length === 0) {
-      // Generate recommendations from health score pillars
-      if (healthScore) {
-        const pillars = [
-          { name: "Ad Performance", score: healthScore.adPerformance },
-          { name: "Content Engagement", score: healthScore.contentEngagement },
-          { name: "Email Effectiveness", score: healthScore.emailEffectiveness },
-          { name: "Lead Conversion", score: healthScore.leadConversion },
-          { name: "Revenue Attribution", score: healthScore.revenueAttribution },
-        ];
-        for (const p of pillars) {
-          if (p.score < 50) {
-            recs.push({
-              severity: "critical",
-              title: `${p.name} necesita atencion`,
-              description: `Tu score de ${p.name} es ${p.score}/100. Revisa esta area para mejorar.`,
-              action: "Ver Health Score",
-            });
-          } else if (p.score < 70) {
-            recs.push({
-              severity: "warning",
-              title: `${p.name} puede mejorar`,
-              description: `Tu score de ${p.name} es ${p.score}/100. Hay oportunidad de mejora.`,
-              action: "Optimizar",
-            });
-          }
+    // If no data, generate recommendations from health score pillars
+    if (recs.length === 0 && healthScore) {
+      const pillars = [
+        { name: "Ad Performance", score: healthScore.adPerformance },
+        { name: "Content Engagement", score: healthScore.contentEngagement },
+        { name: "Email Effectiveness", score: healthScore.emailEffectiveness },
+        { name: "Lead Conversion", score: healthScore.leadConversion },
+        { name: "Revenue Attribution", score: healthScore.revenueAttribution },
+      ];
+      for (const p of pillars) {
+        if (p.score < 50) {
+          recs.push({
+            priority: "high",
+            title: `${p.name} necesita atencion`,
+            description: `Tu score de ${p.name} es ${p.score}/100. Revisa esta area para mejorar.`,
+            action: "Ver Health Score",
+          });
+        } else if (p.score < 70) {
+          recs.push({
+            priority: "medium",
+            title: `${p.name} puede mejorar`,
+            description: `Tu score de ${p.name} es ${p.score}/100. Hay oportunidad de mejora.`,
+            action: "Optimizar",
+          });
+        } else {
+          recs.push({
+            priority: "low",
+            title: `${p.name} en buen estado`,
+            description: `Tu score de ${p.name} es ${p.score}/100. Sigue asi.`,
+            action: "Ver detalles",
+          });
         }
       }
     }
 
+    // Sort by priority: high first, then medium, then low
+    const order = { high: 0, medium: 1, low: 2 };
+    recs.sort((a, b) => order[a.priority] - order[b.priority]);
+
     return recs;
   }, [healthScore, insights]);
 
-  const severityColors: Record<string, string> = {
-    critical: "#ef4444",
-    warning: "#f59e0b",
-    opportunity: "#3ecf8e",
+  const priorityColors: Record<string, string> = {
+    high: "#ef4444",
+    medium: "#f59e0b",
+    low: "#3ecf8e",
   };
+
+  const priorityLabels: Record<string, string> = {
+    high: "Alta",
+    medium: "Media",
+    low: "Baja",
+  };
+
+  const noData = !healthScore && !insights;
 
   return (
     <>
@@ -2873,129 +2906,361 @@ export function RecomendacionesIAPage() {
             <div key={i} className="h-20 rounded-lg bg-[#1e1e1e] animate-pulse" />
           ))}
         </div>
-      ) : recommendations.length === 0 ? (
-        <EmptyState
-          title="Sin recomendaciones"
-          description="Calcula tu Health Score y conecta plataformas para recibir recomendaciones personalizadas."
-          icon={<Lightbulb size={24} className="text-[#888]" />}
-        />
-      ) : (
-        <div className="space-y-3">
-          {recommendations.map((rec, i) => (
-            <div
-              key={i}
-              className="rounded-lg border p-4 flex items-start gap-4"
-              style={{
-                backgroundColor: "#1e1e1e",
-                borderColor: (severityColors[rec.severity] ?? "#333") + "40",
-              }}
-            >
-              <div
-                className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
-                style={{ backgroundColor: severityColors[rec.severity] ?? "#888" }}
-              />
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <h4 className="text-[13px] font-medium text-[#ededed]">{rec.title}</h4>
-                  <Badge
-                    text={rec.severity === "critical" ? "Critico" : rec.severity === "warning" ? "Atencion" : "Oportunidad"}
-                    color={severityColors[rec.severity] ?? "#888"}
-                  />
-                </div>
-                <p className="text-[12px] text-[#888]">{rec.description}</p>
-              </div>
-            </div>
-          ))}
+      ) : noData ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4" style={{ backgroundColor: "#2a2a2a" }}>
+            <Lightbulb size={24} className="text-[#888]" />
+          </div>
+          <h3 className="text-[15px] font-medium text-[#ededed] mb-1">Sin datos para analizar</h3>
+          <p className="text-[13px] text-[#888] max-w-sm mb-5">
+            Calcula tu Health Score para recibir recomendaciones personalizadas basadas en tus datos.
+          </p>
+          <button
+            onClick={() => recalculate.mutate()}
+            disabled={recalculate.isPending}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-[13px] font-medium text-white transition-colors disabled:opacity-50"
+            style={{ backgroundColor: "#3ecf8e" }}
+          >
+            <RotateCcw size={14} className={recalculate.isPending ? "animate-spin" : ""} />
+            {recalculate.isPending ? "Calculando..." : "Recalcular Health Score"}
+          </button>
         </div>
+      ) : recommendations.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4" style={{ backgroundColor: "#2a2a2a" }}>
+            <CheckCircle2 size={24} className="text-[#3ecf8e]" />
+          </div>
+          <h3 className="text-[15px] font-medium text-[#ededed] mb-1">Todo en orden</h3>
+          <p className="text-[13px] text-[#888] max-w-sm mb-5">
+            No hay recomendaciones pendientes. Tu marketing esta en buen estado.
+          </p>
+          <button
+            onClick={() => recalculate.mutate()}
+            disabled={recalculate.isPending}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] border border-[#333] text-[#ccc] hover:border-[#555] hover:text-[#ededed] transition-colors disabled:opacity-50"
+          >
+            <RotateCcw size={13} className={recalculate.isPending ? "animate-spin" : ""} />
+            {recalculate.isPending ? "Calculando..." : "Recalcular Health Score"}
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* Recalculate button at the top */}
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-[12px] text-[#888]">{recommendations.length} recomendacion{recommendations.length !== 1 ? "es" : ""} encontrada{recommendations.length !== 1 ? "s" : ""}</p>
+            <button
+              onClick={() => recalculate.mutate()}
+              disabled={recalculate.isPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] border border-[#333] text-[#ccc] hover:border-[#555] hover:text-[#ededed] transition-colors disabled:opacity-50"
+            >
+              <RotateCcw size={12} className={recalculate.isPending ? "animate-spin" : ""} />
+              {recalculate.isPending ? "Calculando..." : "Recalcular"}
+            </button>
+          </div>
+          <div className="space-y-3">
+            {recommendations.map((rec, i) => (
+              <div
+                key={i}
+                className="rounded-lg border p-4 flex items-start gap-4"
+                style={{
+                  backgroundColor: "#1e1e1e",
+                  borderColor: (priorityColors[rec.priority] ?? "#333") + "40",
+                }}
+              >
+                <div
+                  className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
+                  style={{ backgroundColor: priorityColors[rec.priority] ?? "#888" }}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h4 className="text-[13px] font-medium text-[#ededed]">{rec.title}</h4>
+                    <Badge
+                      text={priorityLabels[rec.priority] ?? rec.priority}
+                      color={priorityColors[rec.priority] ?? "#888"}
+                    />
+                  </div>
+                  <p className="text-[12px] text-[#888]">{rec.description}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    if (rec.action === "Ver Health Score") {
+                      window.dispatchEvent(new CustomEvent("dashboard:navigate", { detail: { section: "dashboard", item: "Health Score" } }));
+                    }
+                  }}
+                  className="flex-shrink-0 text-[11px] px-3 py-1.5 rounded-md border border-[#333] text-[#ccc] hover:border-[#3ecf8e]/40 hover:text-[#3ecf8e] transition-colors"
+                >
+                  {rec.action}
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </>
   );
 }
 
 export function DigestDiarioPage() {
-  const { data: contactsData } = trpc.contacts.list.useQuery({ page: 1, limit: 1 });
-  const { data: dealStats } = trpc.deals.getStats.useQuery();
-  const { data: activities } = trpc.activities.list.useQuery({ page: 1, limit: 10 });
-  const { data: integrations } = trpc.integrations.list.useQuery();
-  const { data: healthScore } = trpc.healthScore.getCurrent.useQuery();
-  const { data: notifications } = trpc.notifications.list.useQuery({ limit: 5 });
+  const { data: summary, isLoading: summaryLoading } = trpc.dashboard.getSummary.useQuery();
+  const { data: contactsData, isLoading: contactsLoading } = trpc.contacts.list.useQuery({ page: 1, limit: 5 });
+  const { data: dealStats, isLoading: dealsLoading } = trpc.deals.getStats.useQuery();
+  const { data: activities, isLoading: activitiesLoading } = trpc.activities.list.useQuery({ page: 1, limit: 10 });
+  const { data: integrations, isLoading: integrationsLoading } = trpc.integrations.list.useQuery();
+  const { data: healthScore, isLoading: hsLoading } = trpc.healthScore.getCurrent.useQuery();
 
   const today = new Date().toLocaleDateString("es-CR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-  const contactCount = contactsData?.total ?? 0;
-  const totalDeals = dealStats?.totalDeals ?? 0;
-  const totalValue = dealStats?.totalValue ?? 0;
-  const winRate = dealStats?.winRate ?? 0;
-  const activeIntegrations = integrations?.filter((i) => i.status === "active").length ?? 0;
+  const contactCount = contactsData?.total ?? summary?.totalContacts ?? 0;
+  const recentContacts = contactsData?.contacts ?? [];
+  const totalDeals = dealStats?.totalDeals ?? summary?.totalDeals ?? 0;
+  const totalValue = dealStats?.totalValue ?? summary?.totalDealValue ?? 0;
+  const winRate = dealStats?.winRate ?? summary?.winRate ?? 0;
+  const activeIntegrations = integrations?.filter((i) => i.status === "active").length ?? summary?.connectedPlatforms ?? 0;
+  const totalIntegrations = integrations?.length ?? summary?.totalPlatforms ?? 0;
   const recentActivities = activities?.activities ?? [];
+  const leadsToday = summary?.leadsToday ?? 0;
+  const hsScore = healthScore?.overallScore ?? null;
+
+  const pulse = "animate-pulse bg-[#333] rounded text-transparent select-none";
 
   return (
     <>
       <SectionHeader
         title="Digest Diario"
-        description="Resumen de tu plataforma"
+        description="Resumen de actividad de tu plataforma"
       />
-      <div className="space-y-4">
-        {/* Date header */}
-        <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
-          <div className="flex items-center gap-2 mb-3">
-            <Newspaper size={14} className="text-[#3ecf8e]" />
-            <span className="text-[13px] font-medium text-[#ededed] capitalize">{today}</span>
+
+      {/* Prominent date header */}
+      <div className="rounded-xl border border-[#2e2e2e] p-5 mb-6" style={{ backgroundColor: "#1e1e1e" }}>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#3ecf8e20" }}>
+            <Newspaper size={18} className="text-[#3ecf8e]" />
           </div>
-          <div className="space-y-3 text-[13px] text-[#ccc]">
-            <div className="flex items-start gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#3ecf8e] mt-1.5" />
-              <p><strong>{contactCount} contactos</strong> en tu base de datos</p>
-            </div>
-            <div className="flex items-start gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#6366f1] mt-1.5" />
-              <p><strong>{totalDeals} deals</strong> activos con valor total de <strong>${totalValue.toLocaleString()}</strong>. Win rate: {(winRate * 100).toFixed(1)}%</p>
-            </div>
-            <div className="flex items-start gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#f59e0b] mt-1.5" />
-              <p><strong>{activeIntegrations} integraciones</strong> activas de {integrations?.length ?? 0} conectadas</p>
-            </div>
-            {healthScore && (
-              <div className="flex items-start gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-[#06b6d4] mt-1.5" />
-                <p>Health Score: <strong>{healthScore.overallScore}/100</strong></p>
-              </div>
-            )}
+          <div>
+            <h2 className="text-[18px] font-semibold text-[#ededed] capitalize">{today}</h2>
+            <p className="text-[12px] text-[#888]">Resumen generado automaticamente</p>
           </div>
         </div>
+      </div>
 
-        {/* Recent activity */}
-        {recentActivities.length > 0 && (
-          <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
-            <h3 className="text-[13px] font-medium text-[#ededed] mb-3">Actividad reciente</h3>
+      {/* Stats row */}
+      <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+          <div className="flex items-center gap-2 mb-2">
+            <Users size={14} className="text-[#3ecf8e]" />
+            <span className="text-[11px] uppercase tracking-wider text-[#888]">Contactos</span>
+          </div>
+          <p className={`text-[20px] font-semibold text-[#ededed] ${contactsLoading && summaryLoading ? pulse : ""}`}>
+            {contactsLoading && summaryLoading ? "..." : contactCount.toLocaleString()}
+          </p>
+          {leadsToday > 0 && (
+            <p className="text-[11px] text-[#3ecf8e] mt-1">+{leadsToday} hoy</p>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+          <div className="flex items-center gap-2 mb-2">
+            <DollarSign size={14} className="text-[#6366f1]" />
+            <span className="text-[11px] uppercase tracking-wider text-[#888]">Deals</span>
+          </div>
+          <p className={`text-[20px] font-semibold text-[#ededed] ${dealsLoading && summaryLoading ? pulse : ""}`}>
+            {dealsLoading && summaryLoading ? "..." : totalDeals}
+          </p>
+          <p className={`text-[11px] text-[#888] mt-1 ${dealsLoading && summaryLoading ? pulse : ""}`}>
+            {dealsLoading && summaryLoading ? "..." : `$${totalValue.toLocaleString()} total`}
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+          <div className="flex items-center gap-2 mb-2">
+            <Plug size={14} className="text-[#f59e0b]" />
+            <span className="text-[11px] uppercase tracking-wider text-[#888]">Integraciones</span>
+          </div>
+          <p className={`text-[20px] font-semibold text-[#ededed] ${integrationsLoading ? pulse : ""}`}>
+            {integrationsLoading ? "..." : `${activeIntegrations}/${totalIntegrations}`}
+          </p>
+          <p className="text-[11px] text-[#888] mt-1">
+            {integrationsLoading ? "" : activeIntegrations > 0 ? "activas" : "ninguna activa"}
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+          <div className="flex items-center gap-2 mb-2">
+            <BarChart3 size={14} className="text-[#06b6d4]" />
+            <span className="text-[11px] uppercase tracking-wider text-[#888]">Health Score</span>
+          </div>
+          {hsLoading ? (
+            <p className={`text-[20px] font-semibold ${pulse}`}>...</p>
+          ) : hsScore !== null ? (
+            <>
+              <p className="text-[20px] font-semibold" style={{ color: hsScore >= 60 ? "#3ecf8e" : hsScore >= 40 ? "#f59e0b" : "#ef4444" }}>
+                {hsScore}/100
+              </p>
+              <p className="text-[11px] text-[#888] mt-1">
+                {hsScore >= 80 ? "Excelente" : hsScore >= 60 ? "Bueno" : hsScore >= 40 ? "Regular" : "Necesita atencion"}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-[20px] font-semibold text-[#555]">--</p>
+              <p className="text-[11px] text-[#888] mt-1">Sin calcular</p>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-5">
+        {/* Deals summary */}
+        <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+          <h3 className="text-[13px] font-medium text-[#ededed] mb-3 flex items-center gap-2">
+            <Target size={13} className="text-[#6366f1]" />
+            Resumen de ventas
+          </h3>
+          {dealsLoading && summaryLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-4 rounded bg-[#333] animate-pulse" />
+              ))}
+            </div>
+          ) : totalDeals === 0 ? (
+            <p className="text-[12px] text-[#888] py-4 text-center">No hay deals registrados aun.</p>
+          ) : (
+            <div className="space-y-3 text-[13px] text-[#ccc]">
+              <div className="flex items-center justify-between">
+                <span className="text-[#888]">Total deals</span>
+                <span className="font-medium text-[#ededed]">{totalDeals}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[#888]">Valor en pipeline</span>
+                <span className="font-medium text-[#ededed]">${totalValue.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[#888]">Win rate</span>
+                <span className="font-medium" style={{ color: winRate >= 0.5 ? "#3ecf8e" : winRate > 0 ? "#f59e0b" : "#888" }}>
+                  {(winRate * 100).toFixed(1)}%
+                </span>
+              </div>
+              {dealStats?.avgDealSize !== undefined && dealStats.avgDealSize > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-[#888]">Ticket promedio</span>
+                  <span className="font-medium text-[#ededed]">${dealStats.avgDealSize.toLocaleString()}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Recent contacts */}
+        <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+          <h3 className="text-[13px] font-medium text-[#ededed] mb-3 flex items-center gap-2">
+            <Users size={13} className="text-[#3ecf8e]" />
+            Contactos recientes
+          </h3>
+          {contactsLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-8 rounded bg-[#333] animate-pulse" />
+              ))}
+            </div>
+          ) : recentContacts.length === 0 ? (
+            <p className="text-[12px] text-[#888] py-4 text-center">No hay contactos registrados aun.</p>
+          ) : (
+            <div className="space-y-2">
+              {recentContacts.map((c) => (
+                <div key={c.id} className="flex items-center gap-2.5 py-1.5">
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0" style={{ backgroundColor: "#3ecf8e" }}>
+                    {(c.firstName?.[0] ?? c.email?.[0] ?? "?").toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] text-[#ededed] truncate">
+                      {[c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || "Sin nombre"}
+                    </p>
+                    {c.company && <p className="text-[10px] text-[#888] truncate">{c.company}</p>}
+                  </div>
+                  {c.scoreLabel && (
+                    <Badge
+                      text={c.scoreLabel}
+                      color={c.scoreLabel === "HOT" ? "#ef4444" : c.scoreLabel === "WARM" ? "#f59e0b" : "#3ecf8e"}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Recent activities */}
+        <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+          <h3 className="text-[13px] font-medium text-[#ededed] mb-3 flex items-center gap-2">
+            <Activity size={13} className="text-[#f59e0b]" />
+            Actividades recientes
+          </h3>
+          {activitiesLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-6 rounded bg-[#333] animate-pulse" />
+              ))}
+            </div>
+          ) : recentActivities.length === 0 ? (
+            <p className="text-[12px] text-[#888] py-4 text-center">No hay actividades recientes.</p>
+          ) : (
             <div className="space-y-2">
               {recentActivities.slice(0, 5).map((a) => (
                 <div key={a.id} className="flex items-center gap-2 text-[12px] text-[#ccc]">
                   <Activity size={12} className="text-[#555] flex-shrink-0" />
                   <Badge text={a.type.replace(/_/g, " ")} color="#6366f1" />
-                  {a.subject && <span className="text-[#888] truncate">{a.subject}</span>}
+                  <span className="text-[#888] truncate flex-1">{a.subject || "Sin asunto"}</span>
+                  <span className="text-[10px] text-[#555] flex-shrink-0">
+                    {new Date(a.createdAt).toLocaleTimeString("es-CR", { hour: "2-digit", minute: "2-digit" })}
+                  </span>
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* Notifications */}
-        {notifications && notifications.length > 0 && (
-          <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
-            <h3 className="text-[13px] font-medium text-[#ededed] mb-3">Notificaciones</h3>
+        {/* Integration status */}
+        <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+          <h3 className="text-[13px] font-medium text-[#ededed] mb-3 flex items-center gap-2">
+            <Plug size={13} className="text-[#06b6d4]" />
+            Estado de integraciones
+          </h3>
+          {integrationsLoading ? (
             <div className="space-y-2">
-              {notifications.map((n) => (
-                <div key={n.id} className="flex items-start gap-2 text-[12px]">
-                  <div className={`w-1.5 h-1.5 rounded-full mt-1.5 ${n.read ? "bg-[#555]" : "bg-[#3ecf8e]"}`} />
-                  <div>
-                    <p className="text-[#ededed] font-medium">{n.title}</p>
-                    <p className="text-[#888]">{n.body}</p>
-                  </div>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-6 rounded bg-[#333] animate-pulse" />
+              ))}
+            </div>
+          ) : !integrations || integrations.length === 0 ? (
+            <div className="py-4 text-center">
+              <p className="text-[12px] text-[#888] mb-3">No hay integraciones conectadas.</p>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent("dashboard:navigate", { detail: { section: "integrations", item: "Meta Ads" } }))}
+                className="text-[11px] px-3 py-1.5 rounded-md border border-[#333] text-[#ccc] hover:border-[#3ecf8e]/40 hover:text-[#3ecf8e] transition-colors"
+              >
+                Conectar plataforma
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {integrations.map((integ) => (
+                <div key={integ.id} className="flex items-center gap-2 text-[12px]">
+                  {integ.status === "active" ? (
+                    <CheckCircle2 size={12} className="text-[#3ecf8e] flex-shrink-0" />
+                  ) : integ.status === "error" ? (
+                    <XCircle size={12} className="text-[#ef4444] flex-shrink-0" />
+                  ) : (
+                    <AlertTriangle size={12} className="text-[#f59e0b] flex-shrink-0" />
+                  )}
+                  <span className="text-[#ededed] flex-1">{integ.platform.replace(/_/g, " ")}</span>
+                  <Badge
+                    text={integ.status === "active" ? "Activa" : integ.status === "error" ? "Error" : "Inactiva"}
+                    color={integ.status === "active" ? "#3ecf8e" : integ.status === "error" ? "#ef4444" : "#f59e0b"}
+                  />
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </>
   );
@@ -3024,11 +3289,13 @@ export function ConectarPlataformaPage() {
   }, [integrations]);
 
   const allPlatforms = [
-    { name: "Meta Ads", provider: "meta_ads" as const, icon: "M", color: "#1877F2" },
-    { name: "Google Ads", provider: "google_ads" as const, icon: "G", color: "#4285F4" },
-    { name: "TikTok Ads", provider: "tiktok" as const, icon: "T", color: "#000000" },
-    { name: "Google Analytics 4", provider: "ga4" as const, icon: "A", color: "#E37400" },
-    { name: "Shopify", provider: "shopify" as const, icon: "S", color: "#95BF47" },
+    { name: "Meta Ads", provider: "meta_ads" as const, icon: "M", color: "#1877F2", desc: "Facebook & Instagram Ads", isAd: true },
+    { name: "Google Ads", provider: "google_ads" as const, icon: "G", color: "#4285F4", desc: "Busqueda, Display & YouTube", isAd: true },
+    { name: "TikTok Ads", provider: "tiktok" as const, icon: "T", color: "#000000", desc: "Anuncios en TikTok", isAd: true },
+    { name: "Google Analytics", provider: "ga4" as const, icon: "A", color: "#E37400", desc: "Trafico y conversiones", isAd: false },
+    { name: "Shopify", provider: "shopify" as const, icon: "S", color: "#95BF47", desc: "E-commerce y ventas", isAd: false },
+    { name: "Stripe", provider: "stripe" as const, icon: "$", color: "#635BFF", desc: "Pagos y suscripciones", isAd: false },
+    { name: "WhatsApp", provider: "whatsapp" as const, icon: "W", color: "#25D366", desc: "Mensajeria y soporte", isAd: false },
   ];
 
   return (
@@ -3038,60 +3305,98 @@ export function ConectarPlataformaPage() {
         description="Conecta tus plataformas de marketing para centralizar datos"
       />
       {isLoading ? (
-        <div className="grid grid-cols-2 gap-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-20 rounded-lg bg-[#1e1e1e] animate-pulse" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 7 }).map((_, i) => (
+            <div key={i} className="h-[160px] rounded-xl bg-[#1e1e1e] animate-pulse" />
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {allPlatforms.map((p) => {
             const connected = connectedMap.get(p.provider);
             const isActive = connected?.status === "active";
             return (
               <div
                 key={p.name}
-                className="rounded-lg border border-[#2e2e2e] p-4 flex items-center gap-3"
-                style={{ backgroundColor: "#1e1e1e" }}
+                className="rounded-xl border p-5 flex flex-col gap-4 transition-all duration-200 hover:shadow-lg"
+                style={{
+                  backgroundColor: "#1a1a1a",
+                  borderColor: isActive ? `${p.color}40` : "#2e2e2e",
+                  boxShadow: isActive ? `0 0 20px ${p.color}10` : undefined,
+                }}
               >
-                <div
-                  className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-[14px]"
-                  style={{ backgroundColor: p.color }}
-                >
-                  {p.icon}
+                {/* Header row */}
+                <div className="flex items-start gap-3">
+                  <div
+                    className="w-11 h-11 rounded-xl flex items-center justify-center text-white font-bold text-[15px] shrink-0 shadow-md"
+                    style={{ backgroundColor: p.color }}
+                  >
+                    {p.icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[14px] font-semibold text-[#ededed]">{p.name}</p>
+                    <p className="text-[12px] text-[#777] mt-0.5">{p.desc}</p>
+                  </div>
+                  {isActive && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: p.color }} />
+                      <span className="text-[10px] font-medium" style={{ color: p.color }}>Activo</span>
+                    </div>
+                  )}
                 </div>
+
+                {/* Status info */}
                 <div className="flex-1">
-                  <p className="text-[13px] font-medium text-[#ededed]">{p.name}</p>
-                  <p className="text-[11px] text-[#888]">
-                    {isActive ? "Conectado" : connected ? "Desconectado" : "Disponible"}
-                    {connected?.lastSyncAt && ` · Sync: ${new Date(connected.lastSyncAt).toLocaleDateString()}`}
-                  </p>
+                  {isActive && connected?.lastSyncAt && (
+                    <p className="text-[11px] text-[#666]">
+                      Ultimo sync: {new Date(connected.lastSyncAt).toLocaleDateString()}
+                    </p>
+                  )}
+                  {connected && !isActive && (
+                    <p className="text-[11px] text-yellow-500/80">Desconectado — reconectar para sincronizar</p>
+                  )}
                 </div>
-                <div className="flex gap-1.5">
+
+                {/* Actions */}
+                <div className="flex gap-2">
                   {isActive ? (
                     <>
                       <button
                         onClick={() => syncNow.mutate({ integrationId: connected!.id })}
                         disabled={syncNow.isPending}
-                        className="text-[10px] px-2 py-1 rounded border border-[#333] text-[#ccc] hover:border-[#555] transition-colors"
+                        className="flex-1 text-[11px] px-3 py-2 rounded-lg border border-[#333] text-[#ccc] hover:border-[#555] transition-colors font-medium"
                       >
-                        Sync
+                        {syncNow.isPending ? "Sincronizando..." : "Sincronizar"}
                       </button>
                       <button
                         onClick={() => disconnect.mutate({ integrationId: connected!.id })}
                         disabled={disconnect.isPending}
-                        className="text-[10px] px-2 py-1 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
+                        className="text-[11px] px-3 py-2 rounded-lg border border-red-500/20 text-red-400 hover:bg-red-500/10 transition-colors font-medium"
                       >
                         Desconectar
                       </button>
                     </>
                   ) : (
                     <button
-                      onClick={() => startOAuth.mutate({ provider: p.provider })}
-                      disabled={startOAuth.isPending}
-                      className="text-[11px] px-3 py-1.5 rounded border border-[#333] text-[#ccc] hover:border-[#3ecf8e]/40 hover:text-[#3ecf8e] transition-colors"
+                      onClick={() => {
+                        if (p.provider === "stripe" || p.provider === "whatsapp") return;
+                        startOAuth.mutate({ provider: p.provider as "meta_ads" | "google_ads" | "ga4" | "tiktok" | "shopify" });
+                      }}
+                      disabled={startOAuth.isPending || p.provider === "stripe" || p.provider === "whatsapp"}
+                      className="w-full text-[12px] px-4 py-2.5 rounded-lg font-semibold transition-all duration-200 hover:brightness-110"
+                      style={{
+                        backgroundColor: `${p.color}18`,
+                        color: p.color,
+                        border: `1px solid ${p.color}30`,
+                      }}
                     >
-                      {startOAuth.isPending ? "..." : "Conectar"}
+                      {startOAuth.isPending ? (
+                        <span className="flex items-center justify-center gap-1.5">
+                          <Loader2 size={13} className="animate-spin" /> Conectando...
+                        </span>
+                      ) : (
+                        "Conectar"
+                      )}
                     </button>
                   )}
                 </div>
@@ -3105,24 +3410,89 @@ export function ConectarPlataformaPage() {
 }
 
 export function GenerarReportePage() {
+  const DATE_PRESETS = [
+    { label: "7 dias", days: 7 },
+    { label: "30 dias", days: 30 },
+    { label: "90 dias", days: 90 },
+    { label: "Personalizado", days: 0 },
+  ];
+
+  const REPORT_TYPES = [
+    { id: "executive", label: "Resumen Ejecutivo", desc: "Vision general de todas las metricas clave", icon: <FileText size={20} /> },
+    { id: "campaigns", label: "Rendimiento de Campanas", desc: "Analisis detallado de campanas publicitarias", icon: <BarChart3 size={20} /> },
+    { id: "crm", label: "CRM & Pipeline", desc: "Estado del pipeline, deals y contactos", icon: <Users size={20} /> },
+    { id: "health", label: "Health Score", desc: "Indicadores de salud del negocio", icon: <Activity size={20} /> },
+  ];
+
+  const [selectedPreset, setSelectedPreset] = useState(1);
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date();
-    d.setMonth(d.getMonth() - 1);
+    d.setDate(d.getDate() - 30);
     return d.toISOString().split("T")[0];
   });
   const [toDate, setToDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [selectedReportType, setSelectedReportType] = useState("executive");
   const [generated, setGenerated] = useState(false);
+
+  const handlePresetClick = (index: number, days: number) => {
+    setSelectedPreset(index);
+    if (days > 0) {
+      const to = new Date();
+      const from = new Date();
+      from.setDate(from.getDate() - days);
+      setFromDate(from.toISOString().split("T")[0]);
+      setToDate(to.toISOString().split("T")[0]);
+    }
+  };
 
   const generateMutation = trpc.reports.generate.useMutation({
     onSuccess: (data) => {
       setGenerated(true);
-      // Download the PDF
       const link = document.createElement("a");
       link.href = `data:application/pdf;base64,${data.pdf}`;
       link.download = data.filename;
       link.click();
     },
   });
+
+  const utils = trpc.useUtils();
+  const [exportingContacts, setExportingContacts] = useState(false);
+  const [exportingDeals, setExportingDeals] = useState(false);
+
+  const handleExportContacts = async () => {
+    setExportingContacts(true);
+    try {
+      const data = await utils.contacts.exportCSV.fetch();
+      const blob = new Blob([data.csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `contactos_${new Date().toISOString().split("T")[0]}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch { /* ignore */ }
+    setExportingContacts(false);
+  };
+
+  const handleExportDeals = async () => {
+    setExportingDeals(true);
+    try {
+      const data = await utils.deals.exportCSV.fetch();
+      const blob = new Blob([data.csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `deals_${new Date().toISOString().split("T")[0]}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch { /* ignore */ }
+    setExportingDeals(false);
+  };
+
+  const exportContactsCsv = { mutate: handleExportContacts, isPending: exportingContacts };
+  const exportDealsCsv = { mutate: handleExportDeals, isPending: exportingDeals };
+
+  const isCustom = selectedPreset === 3;
 
   return (
     <>
@@ -3131,17 +3501,40 @@ export function GenerarReportePage() {
         description="Crea reportes personalizados de tus metricas"
       />
 
-      {/* Date range selection */}
-      <div className="rounded-lg border border-[#2e2e2e] p-4 mb-6" style={{ backgroundColor: "#1e1e1e" }}>
-        <h3 className="text-[13px] font-medium text-[#ededed] mb-3">Periodo del reporte</h3>
-        <div className="flex items-center gap-4">
+      {/* Date range section */}
+      <div className="rounded-xl border border-[#2e2e2e] p-5 mb-5" style={{ backgroundColor: "#1a1a1a" }}>
+        <div className="flex items-center gap-2 mb-4">
+          <Calendar size={15} className="text-[#888]" />
+          <h3 className="text-[13px] font-semibold text-[#ededed]">Periodo del reporte</h3>
+        </div>
+
+        {/* Preset buttons */}
+        <div className="flex gap-2 mb-4">
+          {DATE_PRESETS.map((preset, i) => (
+            <button
+              key={preset.label}
+              onClick={() => handlePresetClick(i, preset.days)}
+              className="text-[12px] px-4 py-2 rounded-lg font-medium transition-all duration-200"
+              style={{
+                backgroundColor: selectedPreset === i ? "#3ecf8e18" : "#222",
+                color: selectedPreset === i ? "#3ecf8e" : "#999",
+                border: `1px solid ${selectedPreset === i ? "#3ecf8e40" : "#333"}`,
+              }}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Custom date inputs */}
+        <div className="flex items-end gap-4" style={{ opacity: isCustom ? 1 : 0.5 }}>
           <div>
             <label className="block text-[11px] text-[#888] mb-1">Desde</label>
             <input
               type="date"
               value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="h-[36px] px-3 rounded-lg border border-[#333] bg-[#222] text-[13px] text-[#ededed] outline-none"
+              onChange={(e) => { setFromDate(e.target.value); setSelectedPreset(3); }}
+              className="h-[36px] px-3 rounded-lg border border-[#333] bg-[#222] text-[13px] text-[#ededed] outline-none focus:border-[#3ecf8e]/50 transition-colors"
             />
           </div>
           <div>
@@ -3149,54 +3542,94 @@ export function GenerarReportePage() {
             <input
               type="date"
               value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="h-[36px] px-3 rounded-lg border border-[#333] bg-[#222] text-[13px] text-[#ededed] outline-none"
+              onChange={(e) => { setToDate(e.target.value); setSelectedPreset(3); }}
+              className="h-[36px] px-3 rounded-lg border border-[#333] bg-[#222] text-[13px] text-[#ededed] outline-none focus:border-[#3ecf8e]/50 transition-colors"
             />
           </div>
-          <div className="pt-4">
-            <button
-              onClick={() => generateMutation.mutate({ from: new Date(fromDate!), to: new Date(toDate!) })}
-              disabled={generateMutation.isPending}
-              className="flex items-center gap-1.5 text-[12px] text-black px-4 py-2 rounded-lg font-medium disabled:opacity-50"
-              style={{ backgroundColor: "#3ecf8e" }}
-            >
-              {generateMutation.isPending ? "Generando..." : "Generar PDF"}
-            </button>
-          </div>
         </div>
-        {generateMutation.error && (
-          <p className="text-[12px] text-red-400 mt-2">{generateMutation.error.message}</p>
-        )}
-        {generated && (
-          <p className="text-[12px] text-[#3ecf8e] mt-2">Reporte descargado exitosamente.</p>
-        )}
       </div>
 
-      {/* Quick reports */}
-      <h3 className="text-[13px] font-medium text-[#ededed] mb-3">Reportes rapidos</h3>
-      <div className="grid grid-cols-3 gap-4">
-        {[
-          { title: "Resumen Ejecutivo", desc: "Vision general de todas las metricas clave", icon: <FileText size={20} />, days: 30 },
-          { title: "Rendimiento de Ads", desc: "Analisis detallado de campanas publicitarias", icon: <BarChart3 size={20} />, days: 7 },
-          { title: "Pipeline de Ventas", desc: "Estado del pipeline y deals activos", icon: <Layers size={20} />, days: 30 },
-        ].map((r) => (
+      {/* Report type selector */}
+      <div className="rounded-xl border border-[#2e2e2e] p-5 mb-5" style={{ backgroundColor: "#1a1a1a" }}>
+        <h3 className="text-[13px] font-semibold text-[#ededed] mb-4">Tipo de reporte</h3>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {REPORT_TYPES.map((rt) => (
+            <button
+              key={rt.id}
+              onClick={() => setSelectedReportType(rt.id)}
+              className="rounded-xl border p-4 text-left transition-all duration-200"
+              style={{
+                backgroundColor: selectedReportType === rt.id ? "#3ecf8e08" : "#1e1e1e",
+                borderColor: selectedReportType === rt.id ? "#3ecf8e50" : "#2e2e2e",
+              }}
+            >
+              <div className="mb-2.5" style={{ color: selectedReportType === rt.id ? "#3ecf8e" : "#666" }}>
+                {rt.icon}
+              </div>
+              <p className="text-[13px] font-medium text-[#ededed] mb-0.5">{rt.label}</p>
+              <p className="text-[11px] text-[#777]">{rt.desc}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Generate & Export actions */}
+      <div className="rounded-xl border border-[#2e2e2e] p-5 mb-5" style={{ backgroundColor: "#1a1a1a" }}>
+        <h3 className="text-[13px] font-semibold text-[#ededed] mb-4">Acciones</h3>
+        <div className="flex flex-wrap gap-3">
+          {/* Generate PDF */}
           <button
-            key={r.title}
-            onClick={() => {
-              const to = new Date();
-              const from = new Date();
-              from.setDate(from.getDate() - r.days);
-              generateMutation.mutate({ from, to });
-            }}
+            onClick={() => generateMutation.mutate({
+              from: new Date(fromDate || new Date()),
+              to: new Date(toDate || new Date()),
+            })}
             disabled={generateMutation.isPending}
-            className="rounded-lg border border-[#2e2e2e] p-6 text-left hover:border-[#3ecf8e]/40 transition-colors disabled:opacity-50"
-            style={{ backgroundColor: "#1e1e1e" }}
+            className="flex items-center gap-2 text-[13px] text-black px-5 py-2.5 rounded-lg font-semibold disabled:opacity-50 transition-all duration-200 hover:brightness-110"
+            style={{ backgroundColor: "#3ecf8e" }}
           >
-            <div className="text-[#888] mb-3">{r.icon}</div>
-            <h3 className="text-[14px] font-medium text-[#ededed] mb-1">{r.title}</h3>
-            <p className="text-[12px] text-[#888]">{r.desc}</p>
+            {generateMutation.isPending ? (
+              <><Loader2 size={14} className="animate-spin" /> Generando...</>
+            ) : (
+              <><FileText size={14} /> Generar PDF</>
+            )}
           </button>
-        ))}
+
+          {/* Export Contacts CSV */}
+          <button
+            onClick={() => exportContactsCsv.mutate()}
+            disabled={exportContactsCsv.isPending}
+            className="flex items-center gap-2 text-[13px] px-5 py-2.5 rounded-lg font-medium border border-[#333] text-[#ccc] hover:border-[#3ecf8e]/40 hover:text-[#3ecf8e] disabled:opacity-50 transition-all duration-200"
+          >
+            {exportContactsCsv.isPending ? (
+              <><Loader2 size={14} className="animate-spin" /> Exportando...</>
+            ) : (
+              <><Download size={14} /> Exportar Contactos CSV</>
+            )}
+          </button>
+
+          {/* Export Deals CSV */}
+          <button
+            onClick={() => exportDealsCsv.mutate()}
+            disabled={exportDealsCsv.isPending}
+            className="flex items-center gap-2 text-[13px] px-5 py-2.5 rounded-lg font-medium border border-[#333] text-[#ccc] hover:border-[#3ecf8e]/40 hover:text-[#3ecf8e] disabled:opacity-50 transition-all duration-200"
+          >
+            {exportDealsCsv.isPending ? (
+              <><Loader2 size={14} className="animate-spin" /> Exportando...</>
+            ) : (
+              <><Download size={14} /> Exportar Deals CSV</>
+            )}
+          </button>
+        </div>
+
+        {/* Status messages */}
+        {generateMutation.error && (
+          <p className="text-[12px] text-red-400 mt-3">{generateMutation.error.message}</p>
+        )}
+        {generated && (
+          <p className="text-[12px] text-[#3ecf8e] mt-3 flex items-center gap-1.5">
+            <CheckCircle2 size={13} /> Reporte descargado exitosamente.
+          </p>
+        )}
       </div>
     </>
   );

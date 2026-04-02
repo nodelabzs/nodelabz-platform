@@ -122,6 +122,11 @@ export const contactsRouter = router({
           skip,
           take: limit,
           orderBy,
+          include: {
+            deals: {
+              select: { id: true, value: true },
+            },
+          },
         }),
         prisma.contact.count({ where }),
       ]);
@@ -832,4 +837,171 @@ export const contactsRouter = router({
       withoutPhone: total - withPhone,
     };
   }),
+
+  // ── Tag listing ────────────────────────────────────────────────
+
+  listTags: tenantProcedure.query(async ({ ctx }) => {
+    const contacts = await prisma.contact.findMany({
+      where: { tenantId: ctx.effectiveTenantId },
+      select: { tags: true },
+    });
+    const tagCounts: Record<string, number> = {};
+    for (const c of contacts) {
+      for (const t of c.tags) {
+        tagCounts[t] = (tagCounts[t] || 0) + 1;
+      }
+    }
+    return Object.entries(tagCounts)
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count);
+  }),
+
+  removeTagFromAll: tenantProcedure
+    .input(z.object({ tag: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const tenantId = ctx.effectiveTenantId;
+      const contacts = await prisma.contact.findMany({
+        where: { tenantId, tags: { has: input.tag } },
+        select: { id: true, tags: true },
+      });
+      if (contacts.length === 0) return { updated: 0 };
+      const updates = contacts.map((c) =>
+        prisma.contact.update({
+          where: { id: c.id },
+          data: { tags: c.tags.filter((t) => t !== input.tag) },
+        })
+      );
+      await prisma.$transaction(updates);
+      return { updated: contacts.length };
+    }),
+
+  // ── Lead scoring config ────────────────────────────────────────
+
+  getScoringConfig: tenantProcedure.query(async ({ ctx }) => {
+    const mem = await prisma.aiMemory.findUnique({
+      where: {
+        tenantId_category_key: {
+          tenantId: ctx.effectiveTenantId,
+          category: "lead_scoring_config",
+          key: "default",
+        },
+      },
+    });
+    if (!mem) return null;
+    return JSON.parse(mem.value) as {
+      thresholds: { hot: number; warm: number };
+      factors: Array<{ id: string; label: string; points: number; enabled: boolean }>;
+    };
+  }),
+
+  saveScoringConfig: tenantProcedure
+    .input(
+      z.object({
+        thresholds: z.object({
+          hot: z.number().int().min(0).max(100),
+          warm: z.number().int().min(0).max(100),
+        }),
+        factors: z.array(
+          z.object({
+            id: z.string(),
+            label: z.string(),
+            points: z.number().int(),
+            enabled: z.boolean(),
+          })
+        ),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const tenantId = ctx.effectiveTenantId;
+      const value = JSON.stringify(input);
+      return prisma.aiMemory.upsert({
+        where: {
+          tenantId_category_key: {
+            tenantId,
+            category: "lead_scoring_config",
+            key: "default",
+          },
+        },
+        create: {
+          tenantId,
+          category: "lead_scoring_config",
+          key: "default",
+          value,
+          source: "contacts",
+        },
+        update: { value },
+      });
+    }),
+
+  recalculateScores: tenantProcedure
+    .input(
+      z.object({
+        thresholds: z.object({
+          hot: z.number().int().min(0).max(100),
+          warm: z.number().int().min(0).max(100),
+        }),
+        factors: z.array(
+          z.object({
+            id: z.string(),
+            label: z.string(),
+            points: z.number().int(),
+            enabled: z.boolean(),
+          })
+        ),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const tenantId = ctx.effectiveTenantId;
+      const contacts = await prisma.contact.findMany({
+        where: { tenantId },
+        include: { deals: { select: { id: true } }, activities: { select: { id: true, createdAt: true } } },
+      });
+
+      const { thresholds, factors } = input;
+      const enabledFactors = factors.filter((f) => f.enabled);
+      const now = new Date();
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      const updates = contacts.map((c) => {
+        let score = 0;
+        for (const f of enabledFactors) {
+          switch (f.id) {
+            case "has_email":
+              if (c.email) score += f.points;
+              break;
+            case "has_phone":
+              if (c.phone) score += f.points;
+              break;
+            case "has_company":
+              if (c.company) score += f.points;
+              break;
+            case "paid_source":
+              if (c.source && ["Meta Ads", "Google Ads", "meta_ads", "google_ads"].includes(c.source)) score += f.points;
+              break;
+            case "has_deals":
+              if (c.deals && c.deals.length > 0) score += f.points;
+              break;
+            case "recent_activity":
+              if (c.activities && c.activities.some((a) => new Date(a.createdAt) >= sevenDaysAgo)) score += f.points;
+              break;
+          }
+        }
+        score = Math.max(0, Math.min(100, score));
+        const scoreLabel = score >= thresholds.hot ? "HOT" : score >= thresholds.warm ? "WARM" : "COLD";
+        return prisma.contact.update({
+          where: { id: c.id },
+          data: { score, scoreLabel },
+        });
+      });
+
+      // Run in batches of 50 to avoid overwhelming the DB
+      let updated = 0;
+      for (let i = 0; i < updates.length; i += 50) {
+        const batch = updates.slice(i, i + 50);
+        await prisma.$transaction(batch);
+        updated += batch.length;
+      }
+
+      return { updated };
+    }),
 });

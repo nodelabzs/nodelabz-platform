@@ -56,6 +56,16 @@ export async function POST(req: Request) {
         const messages =
           (value.messages as Array<Record<string, unknown>>) || [];
 
+        // Extract WhatsApp profile names from contacts array in the payload
+        const waContacts =
+          (value.contacts as Array<{ wa_id?: string; profile?: { name?: string } }>) || [];
+        const profileNameMap = new Map<string, string>();
+        for (const wc of waContacts) {
+          if (wc.wa_id && wc.profile?.name) {
+            profileNameMap.set(wc.wa_id, wc.profile.name);
+          }
+        }
+
         for (const msg of messages) {
           const from = msg.from as string | undefined;
           const waMessageId = msg.id as string | undefined;
@@ -88,19 +98,42 @@ export async function POST(req: Request) {
 
           const tenantId = integration.tenantId;
 
-          // Find or create contact by phone number
+          // Find or auto-create contact by phone number
           let contact = await prisma.contact.findFirst({
             where: { tenantId, phone: from },
           });
 
           if (!contact) {
+            // Use WhatsApp profile name if available, otherwise fall back to phone number
+            const profileName = profileNameMap.get(from);
+            const nameParts = profileName ? profileName.split(" ") : [];
+            const firstName = nameParts.length > 0 ? nameParts[0]! : from;
+            const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : undefined;
+
             contact = await prisma.contact.create({
               data: {
                 tenantId,
-                firstName: from, // Use phone as name placeholder
+                firstName,
+                lastName,
                 phone: from,
                 source: "whatsapp",
-                tags: [],
+                tags: ["whatsapp-lead", "auto-created"],
+              },
+            });
+
+            // Log an activity for the auto-created contact
+            await prisma.activity.create({
+              data: {
+                tenantId,
+                contactId: contact.id,
+                type: "contact_created",
+                subject: "Contacto auto-creado desde WhatsApp",
+                body: `Contacto creado automaticamente al recibir mensaje de ${from}`,
+                metadata: {
+                  source: "whatsapp",
+                  phone: from,
+                  profileName: profileName ?? null,
+                },
               },
             });
           }

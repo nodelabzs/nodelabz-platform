@@ -58,6 +58,19 @@ export function DashboardShell({
     user.email?.split("@")[0] ||
     "Usuario";
 
+  // Listen for programmatic navigation from page components
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { section: string; item?: string };
+      if (detail?.section) {
+        setActiveSection(detail.section);
+        setActiveItem(detail.item ?? getDefaultItem(detail.section));
+      }
+    };
+    window.addEventListener("dashboard:navigate", handler);
+    return () => window.removeEventListener("dashboard:navigate", handler);
+  }, []);
+
   // When section changes, reset active item to default
   const handleSectionChange = useCallback((section: string) => {
     setActiveSection(section);

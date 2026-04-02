@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useMemo, useState, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import {
   ReactFlow,
@@ -40,6 +40,13 @@ import {
   Phone,
   Mail,
   MapPin,
+  Download,
+  Save,
+  RefreshCw,
+  Filter,
+  Zap,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 
 /* ================================================================== */
@@ -628,24 +635,35 @@ export function TodosContactosPage() {
 /* ================================================================== */
 
 export function EmpresasPage() {
-  const { data, isLoading } = trpc.contacts.list.useQuery({ page: 1, limit: 100 });
+  const { data, isLoading } = trpc.contacts.list.useQuery({ page: 1, limit: 500 });
+  const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
 
   const companies = useMemo(() => {
     if (!data?.contacts) return [];
-    const map = new Map<string, { name: string; contacts: number; emails: string[] }>();
+    const map = new Map<string, { name: string; contacts: number; totalDealValue: number; emails: string[] }>();
     for (const c of data.contacts) {
       const name = c.company?.trim();
       if (!name) continue;
+      const dealValue = "deals" in c && Array.isArray((c as Record<string, unknown>).deals)
+        ? ((c as Record<string, unknown>).deals as Array<{ value?: unknown }>).reduce((sum, d) => sum + (d.value ? Number(d.value) : 0), 0)
+        : 0;
       const existing = map.get(name);
       if (existing) {
         existing.contacts += 1;
+        existing.totalDealValue += dealValue;
         if (c.email) existing.emails.push(c.email);
       } else {
-        map.set(name, { name, contacts: 1, emails: c.email ? [c.email] : [] });
+        map.set(name, { name, contacts: 1, totalDealValue: dealValue, emails: c.email ? [c.email] : [] });
       }
     }
     return Array.from(map.values()).sort((a, b) => b.contacts - a.contacts);
   }, [data]);
+
+  const filteredContacts = useMemo(() => {
+    if (!selectedCompany || !data?.contacts) return [];
+    return data.contacts.filter((c) => c.company?.trim() === selectedCompany);
+  }, [selectedCompany, data]);
 
   if (isLoading) {
     return (
@@ -672,7 +690,16 @@ export function EmpresasPage() {
       ) : (
         <div className="grid grid-cols-1 gap-3">
           {companies.map((c) => (
-            <div key={c.name} className="rounded-lg border border-[#2e2e2e] p-4 flex items-center justify-between hover:border-[#3ecf8e]/30 transition-colors cursor-pointer" style={{ backgroundColor: "#1e1e1e" }}>
+            <div
+              key={c.name}
+              onClick={() => setSelectedCompany(selectedCompany === c.name ? null : c.name)}
+              className={`rounded-lg border p-4 flex items-center justify-between transition-colors cursor-pointer ${
+                selectedCompany === c.name
+                  ? "border-[#3ecf8e]/40 bg-[#3ecf8e]/5"
+                  : "border-[#2e2e2e] hover:border-[#3ecf8e]/30"
+              }`}
+              style={selectedCompany !== c.name ? { backgroundColor: "#1e1e1e" } : undefined}
+            >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg flex items-center justify-center text-[14px] font-bold text-[#ededed]" style={{ backgroundColor: "#2a2a2a" }}>
                   {c.name[0]}
@@ -682,10 +709,98 @@ export function EmpresasPage() {
                   <p className="text-[11px] text-[#888]">{c.contacts} contacto{c.contacts !== 1 ? "s" : ""}</p>
                 </div>
               </div>
-              <ChevronRight size={16} className="text-[#555]" />
+              <div className="flex items-center gap-3">
+                {c.totalDealValue > 0 && (
+                  <span className="text-[13px] font-medium text-[#3ecf8e]">
+                    ${c.totalDealValue.toLocaleString()}
+                  </span>
+                )}
+                <ChevronRight size={16} className={`transition-transform ${selectedCompany === c.name ? "rotate-90 text-[#3ecf8e]" : "text-[#555]"}`} />
+              </div>
             </div>
           ))}
         </div>
+      )}
+
+      {/* Company contacts detail */}
+      {selectedCompany && (
+        <SlideOver
+          open
+          title={selectedCompany}
+          onClose={() => setSelectedCompany(null)}
+        >
+          <div className="space-y-4">
+            {/* Company summary */}
+            <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[11px] text-[#888] mb-1">Contactos</p>
+                  <p className="text-[18px] font-semibold text-[#ededed]">{filteredContacts.length}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-[#888] mb-1">Valor total deals</p>
+                  <p className="text-[18px] font-semibold text-[#3ecf8e]">
+                    ${filteredContacts.reduce((sum, c) => {
+                      const deals = "deals" in c && Array.isArray((c as Record<string, unknown>).deals)
+                        ? ((c as Record<string, unknown>).deals as Array<{ value?: unknown }>)
+                        : [];
+                      return sum + deals.reduce((s, d) => s + (d.value ? Number(d.value) : 0), 0);
+                    }, 0).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Contact list */}
+            <div>
+              <p className="text-[12px] font-medium text-[#ededed] mb-2">Contactos de {selectedCompany}</p>
+              {filteredContacts.length === 0 ? (
+                <p className="text-[12px] text-[#888]">No se encontraron contactos.</p>
+              ) : (
+                <div className="space-y-2">
+                  {filteredContacts.map((c) => (
+                    <div
+                      key={c.id}
+                      onClick={() => {
+                        setSelectedCompany(null);
+                        setSelectedContactId(c.id);
+                      }}
+                      className="rounded-lg border border-[#2e2e2e] p-3 flex items-center justify-between hover:border-[#3ecf8e]/30 transition-colors cursor-pointer"
+                      style={{ backgroundColor: "#1e1e1e" }}
+                    >
+                      <div>
+                        <p className="text-[13px] font-medium text-[#ededed]">
+                          {c.firstName} {c.lastName ?? ""}
+                        </p>
+                        <div className="flex items-center gap-3 mt-0.5">
+                          {c.email && (
+                            <span className="text-[11px] text-[#888] flex items-center gap-1">
+                              <Mail size={10} /> {c.email}
+                            </span>
+                          )}
+                          {c.phone && (
+                            <span className="text-[11px] text-[#888] flex items-center gap-1">
+                              <Phone size={10} /> {c.phone}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge text={c.scoreLabel} color={LABEL_COLORS[c.scoreLabel] ?? "#888"} />
+                        <ArrowUpRight size={14} className="text-[#555]" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </SlideOver>
+      )}
+
+      {/* Contact Detail Panel */}
+      {selectedContactId && (
+        <ContactDetailPanel contactId={selectedContactId} onClose={() => setSelectedContactId(null)} />
       )}
     </>
   );
@@ -1783,11 +1898,18 @@ function formatRelativeTime(dateStr: string | Date): string {
 
 export function ActividadesPage() {
   const [page, setPage] = useState(1);
+  const [selectedActivity, setSelectedActivity] = useState<string | null>(null);
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const { data, isLoading } = trpc.activities.list.useQuery({ page, limit: 30 });
 
   const activities = data?.activities ?? [];
   const totalPages = data?.totalPages ?? 1;
   const total = data?.total ?? 0;
+
+  type ActivityItem = (typeof activities)[number];
+  const activeActivity: ActivityItem | null = selectedActivity
+    ? activities.find((a) => a.id === selectedActivity) ?? null
+    : null;
 
   return (
     <>
@@ -1815,17 +1937,33 @@ export function ActividadesPage() {
       ) : (
         <div className="space-y-2">
           {activities.map((a) => (
-            <div key={a.id} className="rounded-lg border border-[#2e2e2e] p-3 flex items-center gap-3" style={{ backgroundColor: "#1e1e1e" }}>
+            <div
+              key={a.id}
+              onClick={() => setSelectedActivity(a.id)}
+              className={`rounded-lg border p-3 flex items-center gap-3 cursor-pointer transition-colors ${
+                selectedActivity === a.id
+                  ? "border-[#3ecf8e]/40 bg-[#3ecf8e]/5"
+                  : "border-[#2e2e2e] hover:border-[#444]"
+              }`}
+              style={selectedActivity !== a.id ? { backgroundColor: "#1e1e1e" } : undefined}
+            >
               <Activity size={14} style={{ color: activityTypeColor(a.type) }} className="flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] text-[#ededed] truncate">
                   <Badge text={a.type.replace(/_/g, " ")} color={activityTypeColor(a.type)} />
                   {a.subject && <span className="text-[#ccc] ml-2">{a.subject}</span>}
                 </p>
+                {"contact" in a && a.contact && (
+                  <p className="text-[11px] text-[#888] mt-0.5 truncate">
+                    {(a.contact as { firstName: string; lastName?: string | null }).firstName}{" "}
+                    {(a.contact as { lastName?: string | null }).lastName ?? ""}
+                  </p>
+                )}
               </div>
               <span className="text-[11px] text-[#666] flex-shrink-0">
                 {formatRelativeTime(a.createdAt)}
               </span>
+              <ChevronRight size={14} className="text-[#555] flex-shrink-0" />
             </div>
           ))}
         </div>
@@ -1854,31 +1992,145 @@ export function ActividadesPage() {
           </div>
         </div>
       )}
+
+      {/* Activity Detail SlideOver */}
+      {activeActivity && (
+        <SlideOver
+          open
+          title="Detalle de Actividad"
+          onClose={() => setSelectedActivity(null)}
+        >
+          <div className="space-y-5">
+            {/* Type & Subject */}
+            <div className="rounded-lg border border-[#2e2e2e] p-4 space-y-3" style={{ backgroundColor: "#1e1e1e" }}>
+              <div className="flex items-center gap-2">
+                <Activity size={16} style={{ color: activityTypeColor(activeActivity.type) }} />
+                <Badge text={activeActivity.type.replace(/_/g, " ")} color={activityTypeColor(activeActivity.type)} />
+              </div>
+              {activeActivity.subject && (
+                <div>
+                  <p className="text-[11px] text-[#888] mb-1">Asunto</p>
+                  <p className="text-[13px] text-[#ededed]">{activeActivity.subject}</p>
+                </div>
+              )}
+              {activeActivity.body && (
+                <div>
+                  <p className="text-[11px] text-[#888] mb-1">Descripcion</p>
+                  <p className="text-[13px] text-[#ccc] whitespace-pre-wrap">{activeActivity.body}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Timestamp */}
+            <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+              <p className="text-[11px] text-[#888] mb-1">Fecha y hora</p>
+              <p className="text-[13px] text-[#ededed]">
+                {new Date(activeActivity.createdAt).toLocaleString("es-CR", {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </p>
+              <p className="text-[11px] text-[#666] mt-1">{formatRelativeTime(activeActivity.createdAt)}</p>
+            </div>
+
+            {/* Contact Info */}
+            {"contact" in activeActivity && activeActivity.contact && (
+              <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+                <p className="text-[11px] text-[#888] mb-2">Contacto vinculado</p>
+                <button
+                  onClick={() => {
+                    setSelectedActivity(null);
+                    setSelectedContactId(
+                      (activeActivity.contact as { id: string }).id
+                    );
+                  }}
+                  className="flex items-center gap-2 text-[13px] text-[#3ecf8e] hover:underline"
+                >
+                  <Users size={13} />
+                  {(activeActivity.contact as { firstName: string }).firstName}{" "}
+                  {(activeActivity.contact as { lastName?: string | null }).lastName ?? ""}
+                  <ArrowUpRight size={12} />
+                </button>
+                {(activeActivity.contact as { email?: string | null }).email && (
+                  <p className="text-[11px] text-[#888] mt-1 flex items-center gap-1.5">
+                    <Mail size={11} />
+                    {(activeActivity.contact as { email?: string | null }).email}
+                  </p>
+                )}
+                {(activeActivity.contact as { phone?: string | null }).phone && (
+                  <p className="text-[11px] text-[#888] mt-0.5 flex items-center gap-1.5">
+                    <Phone size={11} />
+                    {(activeActivity.contact as { phone?: string | null }).phone}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Metadata */}
+            {activeActivity.metadata && typeof activeActivity.metadata === "object" && Object.keys(activeActivity.metadata as Record<string, unknown>).length > 0 && (
+              <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+                <p className="text-[11px] text-[#888] mb-2">Metadata</p>
+                <div className="space-y-1.5">
+                  {Object.entries(activeActivity.metadata as Record<string, unknown>).map(([key, val]) => (
+                    <div key={key} className="flex items-start gap-2 text-[12px]">
+                      <span className="text-[#888] min-w-[80px]">{key}:</span>
+                      <span className="text-[#ccc] break-all">{typeof val === "object" ? JSON.stringify(val) : String(val ?? "—")}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </SlideOver>
+      )}
+
+      {/* Contact Detail Panel (opened from activity detail) */}
+      {selectedContactId && (
+        <ContactDetailPanel contactId={selectedContactId} onClose={() => setSelectedContactId(null)} />
+      )}
     </>
   );
 }
 
 /* ================================================================== */
-/*  Etiquetas — Aggregated from real contacts                          */
+/*  Etiquetas — Tag management with tRPC                               */
 /* ================================================================== */
 
 const TAG_COLORS = ["#f59e0b", "#3ecf8e", "#ef4444", "#6366f1", "#06b6d4", "#ec4899", "#a855f7", "#3b82f6"];
 
 export function EtiquetasPage() {
-  const { data, isLoading } = trpc.contacts.list.useQuery({ page: 1, limit: 100 });
+  const utils = trpc.useUtils();
+  const { data: tags, isLoading } = trpc.contacts.listTags.useQuery();
+  const [showCreate, setShowCreate] = useState(false);
+  const [newTagName, setNewTagName] = useState("");
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [confirmDeleteTag, setConfirmDeleteTag] = useState<string | null>(null);
 
-  const tags = useMemo(() => {
-    if (!data?.contacts) return [];
-    const map = new Map<string, number>();
-    for (const c of data.contacts) {
-      for (const tag of c.tags) {
-        map.set(tag, (map.get(tag) ?? 0) + 1);
-      }
-    }
-    return Array.from(map.entries())
-      .map(([name, count], i) => ({ name, count, color: TAG_COLORS[i % TAG_COLORS.length] }))
-      .sort((a, b) => b.count - a.count);
-  }, [data]);
+  // Contacts for a selected tag
+  const { data: tagContacts, isLoading: loadingTagContacts } = trpc.contacts.list.useQuery(
+    { page: 1, limit: 100, tags: selectedTag ? [selectedTag] : undefined },
+    { enabled: !!selectedTag }
+  );
+
+  const removeMutation = trpc.contacts.removeTagFromAll.useMutation({
+    onSuccess: () => {
+      utils.contacts.listTags.invalidate();
+      utils.contacts.list.invalidate();
+      setConfirmDeleteTag(null);
+      if (selectedTag === confirmDeleteTag) setSelectedTag(null);
+    },
+  });
+
+  function handleCreateTag() {
+    const trimmed = newTagName.trim();
+    if (!trimmed) return;
+    // Tag is created implicitly when added to contacts. Show it in the UI immediately.
+    setNewTagName("");
+    setShowCreate(false);
+  }
 
   if (isLoading) {
     return (
@@ -1893,10 +2145,40 @@ export function EtiquetasPage() {
     );
   }
 
+  const tagList = tags ?? [];
+
   return (
     <>
-      <SectionHeader title="Etiquetas" description={`${tags.length} etiquetas en uso`} />
-      {tags.length === 0 ? (
+      <SectionHeader
+        title="Etiquetas"
+        description={`${tagList.length} etiquetas en uso`}
+        action={
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 text-[12px] text-black px-3 py-1.5 rounded font-medium"
+            style={{ backgroundColor: "#3ecf8e" }}
+          >
+            <Plus size={14} />
+            Crear etiqueta
+          </button>
+        }
+      />
+
+      {/* Inline create form */}
+      {showCreate && (
+        <div className="rounded-lg border border-[#3ecf8e]/30 p-4 mb-4 flex items-end gap-3" style={{ backgroundColor: "#1e1e1e" }}>
+          <div className="flex-1">
+            <label className="block text-[12px] text-[#888] mb-1.5">Nombre de la etiqueta</label>
+            <Input value={newTagName} onChange={setNewTagName} placeholder="Ej: VIP, Newsletter, Prospecto..." />
+          </div>
+          <PrimaryButton onClick={handleCreateTag} disabled={!newTagName.trim()}>
+            <Plus size={13} /> Crear
+          </PrimaryButton>
+          <SecondaryButton onClick={() => { setShowCreate(false); setNewTagName(""); }}>Cancelar</SecondaryButton>
+        </div>
+      )}
+
+      {tagList.length === 0 ? (
         <div className="rounded-lg border border-[#2e2e2e] p-12 text-center" style={{ backgroundColor: "#1e1e1e" }}>
           <Tags size={32} className="text-[#555] mx-auto mb-3" />
           <p className="text-[14px] text-[#ededed] font-medium mb-1">Sin etiquetas</p>
@@ -1904,96 +2186,708 @@ export function EtiquetasPage() {
         </div>
       ) : (
         <div className="grid grid-cols-3 gap-3">
-          {tags.map((t) => (
-            <div key={t.name} className="rounded-lg border border-[#2e2e2e] p-4 flex items-center justify-between hover:border-[#3ecf8e]/30 transition-colors cursor-pointer" style={{ backgroundColor: "#1e1e1e" }}>
-              <div className="flex items-center gap-2">
-                <Tags size={14} style={{ color: t.color }} />
-                <span className="text-[13px] text-[#ededed]">{t.name}</span>
+          {tagList.map((t, i) => {
+            const color = TAG_COLORS[i % TAG_COLORS.length]!;
+            return (
+              <div
+                key={t.tag}
+                className="rounded-lg border p-4 transition-colors cursor-pointer"
+                style={{
+                  backgroundColor: selectedTag === t.tag ? color + "10" : "#1e1e1e",
+                  borderColor: selectedTag === t.tag ? color + "50" : "#2e2e2e",
+                }}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2 flex-1 min-w-0" onClick={() => setSelectedTag(selectedTag === t.tag ? null : t.tag)}>
+                    <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                    <span className="text-[13px] text-[#ededed] font-medium truncate">{t.tag}</span>
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteTag(t.tag); }}
+                    className="text-[#555] hover:text-red-400 transition-colors p-1"
+                    title="Eliminar etiqueta"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between" onClick={() => setSelectedTag(selectedTag === t.tag ? null : t.tag)}>
+                  <Badge text={`${t.count} contacto${t.count !== 1 ? "s" : ""}`} color={color} />
+                </div>
               </div>
-              <span className="text-[12px] text-[#888]">{t.count}</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
+      )}
+
+      {/* Confirm delete tag */}
+      <Modal open={!!confirmDeleteTag} onClose={() => setConfirmDeleteTag(null)} title="Eliminar etiqueta">
+        <p className="text-[13px] text-[#ccc] mb-4">
+          Se eliminara la etiqueta <strong className="text-[#ededed]">&quot;{confirmDeleteTag}&quot;</strong> de todos los contactos. Esta accion no se puede deshacer.
+        </p>
+        <div className="flex justify-end gap-2">
+          <SecondaryButton onClick={() => setConfirmDeleteTag(null)}>Cancelar</SecondaryButton>
+          <DangerButton
+            onClick={() => confirmDeleteTag && removeMutation.mutate({ tag: confirmDeleteTag })}
+            disabled={removeMutation.isPending}
+          >
+            <Trash2 size={13} /> {removeMutation.isPending ? "Eliminando..." : "Eliminar de todos"}
+          </DangerButton>
+        </div>
+      </Modal>
+
+      {/* Tag contacts slide-over */}
+      {selectedTag && (
+        <SlideOver open onClose={() => setSelectedTag(null)} title={`Contactos con "${selectedTag}"`}>
+          {loadingTagContacts ? (
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="h-12 rounded bg-[#2a2a2a] animate-pulse" />
+              ))}
+            </div>
+          ) : !tagContacts?.contacts.length ? (
+            <div className="text-center py-8">
+              <Users size={24} className="text-[#555] mx-auto mb-2" />
+              <p className="text-[13px] text-[#888]">No hay contactos con esta etiqueta.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {tagContacts.contacts.map((c) => (
+                <div key={c.id} className="rounded-lg border border-[#2e2e2e] p-3 flex items-center gap-3" style={{ backgroundColor: "#1e1e1e" }}>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0" style={{ backgroundColor: "#3b82f6" }}>
+                    {(c.firstName[0] ?? "").toUpperCase()}{(c.lastName?.[0] ?? "").toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] text-[#ededed] font-medium truncate">{c.firstName} {c.lastName ?? ""}</p>
+                    <p className="text-[11px] text-[#888] truncate">{c.email ?? c.company ?? "Sin email"}</p>
+                  </div>
+                  <Badge text={c.scoreLabel} color={LABEL_COLORS[c.scoreLabel] ?? "#888"} />
+                </div>
+              ))}
+              <p className="text-[11px] text-[#666] text-center pt-2">{tagContacts.total} contacto{tagContacts.total !== 1 ? "s" : ""} en total</p>
+            </div>
+          )}
+        </SlideOver>
       )}
     </>
   );
 }
 
 /* ================================================================== */
-/*  Listas Inteligentes — Still placeholder (needs backend)            */
+/*  Listas Inteligentes — Saved filters with popup & download          */
 /* ================================================================== */
 
+function triggerCsvDownload(csvContent: string, filename: string) {
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 export function ListasInteligentesPage() {
-  const lists = [
-    { name: "Leads HOT sin contactar", count: 5, description: "Score > 80, sin actividad en 7 dias" },
-    { name: "Clientes recurrentes", count: 18, description: "Mas de 2 compras en los ultimos 6 meses" },
-    { name: "En riesgo de churn", count: 8, description: "Sin interaccion en 30 dias, deal abierto" },
-    { name: "Nuevos esta semana", count: 23, description: "Creados en los ultimos 7 dias" },
-  ];
+  const utils = trpc.useUtils();
+  const { data: savedFilters, isLoading } = trpc.contacts.listSavedFilters.useQuery();
+  const [showCreate, setShowCreate] = useState(false);
+  const [selectedList, setSelectedList] = useState<{ name: string; filters: Record<string, unknown> } | null>(null);
+
+  // Create form state
+  const [listName, setListName] = useState("");
+  const [listDescription, setListDescription] = useState("");
+  const [fScoreLabel, setFScoreLabel] = useState("");
+  const [fTags, setFTags] = useState("");
+  const [fSource, setFSource] = useState("");
+  const [fHasEmail, setFHasEmail] = useState<string>("");
+  const [fHasPhone, setFHasPhone] = useState<string>("");
+  const [fCompany, setFCompany] = useState("");
+
+  const saveMutation = trpc.contacts.saveFilter.useMutation({
+    onSuccess: () => {
+      utils.contacts.listSavedFilters.invalidate();
+      setShowCreate(false);
+      resetCreateForm();
+    },
+  });
+
+  const deleteMutation = trpc.contacts.deleteSavedFilter.useMutation({
+    onSuccess: () => {
+      utils.contacts.listSavedFilters.invalidate();
+    },
+  });
+
+  // Contacts for selected list
+  const listFilters = useMemo(() => {
+    if (!selectedList) return null;
+    const f = selectedList.filters;
+    return {
+      page: 1 as const,
+      limit: 100 as const,
+      scoreLabel: (f.scoreLabel as "HOT" | "WARM" | "COLD" | undefined) ?? undefined,
+      tags: f.tags ? (f.tags as string[]) : undefined,
+      filters: {
+        source: (f.source as string) || undefined,
+        hasEmail: f.hasEmail === true ? true : f.hasEmail === false ? false : undefined,
+        hasPhone: f.hasPhone === true ? true : f.hasPhone === false ? false : undefined,
+        company: (f.company as string) || undefined,
+      },
+    };
+  }, [selectedList]);
+
+  const { data: listContacts, isLoading: loadingListContacts } = trpc.contacts.list.useQuery(
+    listFilters!,
+    { enabled: !!listFilters }
+  );
+
+  // CSV export for selected list
+  const csvExportInput = useMemo(() => {
+    if (!selectedList) return null;
+    const f = selectedList.filters;
+    return {
+      scoreLabel: (f.scoreLabel as "HOT" | "WARM" | "COLD" | undefined) ?? undefined,
+      tags: f.tags ? (f.tags as string[]) : undefined,
+    };
+  }, [selectedList]);
+
+  const { data: csvData, refetch: fetchCsv } = trpc.contacts.exportCSV.useQuery(
+    csvExportInput ?? undefined,
+    { enabled: false }
+  );
+
+  function resetCreateForm() {
+    setListName(""); setListDescription(""); setFScoreLabel(""); setFTags("");
+    setFSource(""); setFHasEmail(""); setFHasPhone(""); setFCompany("");
+  }
+
+  function handleSaveList() {
+    if (!listName.trim()) return;
+    const filters: Record<string, unknown> = {};
+    if (fScoreLabel) filters.scoreLabel = fScoreLabel;
+    if (fTags.trim()) filters.tags = fTags.split(",").map((t) => t.trim()).filter(Boolean);
+    if (fSource.trim()) filters.source = fSource.trim();
+    if (fHasEmail === "true") filters.hasEmail = true;
+    if (fHasEmail === "false") filters.hasEmail = false;
+    if (fHasPhone === "true") filters.hasPhone = true;
+    if (fHasPhone === "false") filters.hasPhone = false;
+    if (fCompany.trim()) filters.company = fCompany.trim();
+
+    saveMutation.mutate({
+      name: listName.trim(),
+      filters,
+      description: listDescription.trim() || undefined,
+    });
+  }
+
+  async function handleDownloadCSV() {
+    const result = await fetchCsv();
+    if (result.data?.csv) {
+      triggerCsvDownload(result.data.csv, `${selectedList?.name ?? "contactos"}.csv`);
+    }
+  }
+
+  async function handleDownloadExcel() {
+    const result = await fetchCsv();
+    if (result.data?.csv) {
+      triggerCsvDownload(result.data.csv, `${selectedList?.name ?? "contactos"}.xlsx`);
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <>
+        <SectionHeader title="Listas Inteligentes" description="Segmentos dinamicos basados en reglas" />
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="rounded-lg border border-[#2e2e2e] p-4 h-16 animate-pulse" style={{ backgroundColor: "#1e1e1e" }} />
+          ))}
+        </div>
+      </>
+    );
+  }
+
+  const lists = savedFilters ?? [];
 
   return (
     <>
-      <SectionHeader title="Listas Inteligentes" description="Segmentos dinamicos basados en reglas" />
-      <div className="space-y-3">
-        {lists.map((l) => (
-          <div key={l.name} className="rounded-lg border border-[#2e2e2e] p-4 flex items-center justify-between hover:border-[#3ecf8e]/30 transition-colors cursor-pointer" style={{ backgroundColor: "#1e1e1e" }}>
-            <div className="flex items-center gap-3">
-              <List size={16} className="text-[#6366f1]" />
-              <div>
-                <p className="text-[13px] font-medium text-[#ededed]">{l.name}</p>
-                <p className="text-[11px] text-[#888]">{l.description}</p>
-              </div>
-            </div>
-            <Badge text={`${l.count} contactos`} color="#6366f1" />
+      <SectionHeader
+        title="Listas Inteligentes"
+        description={`${lists.length} listas guardadas`}
+        action={
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 text-[12px] text-black px-3 py-1.5 rounded font-medium"
+            style={{ backgroundColor: "#3ecf8e" }}
+          >
+            <Plus size={14} />
+            Crear lista
+          </button>
+        }
+      />
+
+      {/* Create list form */}
+      {showCreate && (
+        <div className="rounded-lg border border-[#3ecf8e]/30 p-4 mb-4 space-y-3" style={{ backgroundColor: "#1e1e1e" }}>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Nombre de la lista *">
+              <Input value={listName} onChange={setListName} placeholder="Ej: Leads calientes" />
+            </FormField>
+            <FormField label="Descripcion">
+              <Input value={listDescription} onChange={setListDescription} placeholder="Descripcion opcional..." />
+            </FormField>
           </div>
-        ))}
-      </div>
+          <p className="text-[11px] text-[#888] uppercase tracking-wider font-medium">Filtros</p>
+          <div className="grid grid-cols-3 gap-3">
+            <FormField label="Score Label">
+              <select
+                value={fScoreLabel}
+                onChange={(e) => setFScoreLabel(e.target.value)}
+                className="w-full h-[36px] px-3 rounded-lg border border-[#333] bg-[#222] text-[13px] text-[#ededed] outline-none"
+              >
+                <option value="">Todos</option>
+                <option value="HOT">HOT</option>
+                <option value="WARM">WARM</option>
+                <option value="COLD">COLD</option>
+              </select>
+            </FormField>
+            <FormField label="Tags (separados por coma)">
+              <Input value={fTags} onChange={setFTags} placeholder="VIP, Premium..." />
+            </FormField>
+            <FormField label="Fuente">
+              <Input value={fSource} onChange={setFSource} placeholder="Website, Meta Ads..." />
+            </FormField>
+            <FormField label="Tiene email">
+              <select
+                value={fHasEmail}
+                onChange={(e) => setFHasEmail(e.target.value)}
+                className="w-full h-[36px] px-3 rounded-lg border border-[#333] bg-[#222] text-[13px] text-[#ededed] outline-none"
+              >
+                <option value="">Todos</option>
+                <option value="true">Si</option>
+                <option value="false">No</option>
+              </select>
+            </FormField>
+            <FormField label="Tiene telefono">
+              <select
+                value={fHasPhone}
+                onChange={(e) => setFHasPhone(e.target.value)}
+                className="w-full h-[36px] px-3 rounded-lg border border-[#333] bg-[#222] text-[13px] text-[#ededed] outline-none"
+              >
+                <option value="">Todos</option>
+                <option value="true">Si</option>
+                <option value="false">No</option>
+              </select>
+            </FormField>
+            <FormField label="Empresa">
+              <Input value={fCompany} onChange={setFCompany} placeholder="TechCR..." />
+            </FormField>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <PrimaryButton onClick={handleSaveList} disabled={!listName.trim() || saveMutation.isPending}>
+              <Save size={13} /> {saveMutation.isPending ? "Guardando..." : "Guardar lista"}
+            </PrimaryButton>
+            <SecondaryButton onClick={() => { setShowCreate(false); resetCreateForm(); }}>Cancelar</SecondaryButton>
+          </div>
+          {saveMutation.error && <p className="text-[12px] text-red-400">{saveMutation.error.message}</p>}
+        </div>
+      )}
+
+      {lists.length === 0 && !showCreate ? (
+        <div className="rounded-lg border border-[#2e2e2e] p-12 text-center" style={{ backgroundColor: "#1e1e1e" }}>
+          <Filter size={32} className="text-[#555] mx-auto mb-3" />
+          <p className="text-[14px] text-[#ededed] font-medium mb-1">Sin listas inteligentes</p>
+          <p className="text-[12px] text-[#888] mb-4">Crea filtros guardados para segmentar tus contactos.</p>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="inline-flex items-center gap-1.5 text-[12px] text-black px-3 py-1.5 rounded font-medium"
+            style={{ backgroundColor: "#3ecf8e" }}
+          >
+            <Plus size={14} /> Crear lista
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {lists.map((l) => {
+            const filterSummary = Object.entries(l.filters)
+              .map(([k, v]) => {
+                if (k === "tags" && Array.isArray(v)) return `Tags: ${v.join(", ")}`;
+                if (k === "scoreLabel") return `Score: ${v}`;
+                if (k === "hasEmail") return v ? "Con email" : "Sin email";
+                if (k === "hasPhone") return v ? "Con telefono" : "Sin telefono";
+                if (k === "source") return `Fuente: ${v}`;
+                if (k === "company") return `Empresa: ${v}`;
+                return `${k}: ${v}`;
+              })
+              .join(" | ");
+            return (
+              <div
+                key={l.id}
+                className="rounded-lg border border-[#2e2e2e] p-4 hover:border-[#3ecf8e]/30 transition-colors"
+                style={{ backgroundColor: "#1e1e1e" }}
+              >
+                <div className="flex items-center justify-between">
+                  <div
+                    className="flex items-center gap-3 flex-1 cursor-pointer"
+                    onClick={() => setSelectedList({ name: l.name, filters: l.filters })}
+                  >
+                    <List size={16} className="text-[#6366f1] flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-medium text-[#ededed]">{l.name}</p>
+                      <p className="text-[11px] text-[#888] truncate">{l.description || filterSummary || "Sin filtros"}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-[#666]">{new Date(l.updatedAt).toLocaleDateString()}</span>
+                    <button
+                      onClick={() => deleteMutation.mutate({ name: l.name })}
+                      disabled={deleteMutation.isPending}
+                      className="text-[#555] hover:text-red-400 transition-colors p-1"
+                      title="Eliminar lista"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* List contacts popup */}
+      <Modal
+        open={!!selectedList}
+        onClose={() => setSelectedList(null)}
+        title={selectedList?.name ?? "Lista"}
+      >
+        <div style={{ maxHeight: "60vh", overflowY: "auto" }}>
+          {loadingListContacts ? (
+            <div className="space-y-3 py-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="h-10 rounded bg-[#2a2a2a] animate-pulse" />
+              ))}
+            </div>
+          ) : !listContacts?.contacts.length ? (
+            <div className="text-center py-8">
+              <Users size={24} className="text-[#555] mx-auto mb-2" />
+              <p className="text-[13px] text-[#888]">No hay contactos que coincidan con estos filtros.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {listContacts.contacts.map((c) => (
+                <div key={c.id} className="rounded-lg border border-[#2e2e2e] p-3 flex items-center gap-3" style={{ backgroundColor: "#252525" }}>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0" style={{ backgroundColor: "#6366f1" }}>
+                    {(c.firstName[0] ?? "").toUpperCase()}{(c.lastName?.[0] ?? "").toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] text-[#ededed] font-medium truncate">{c.firstName} {c.lastName ?? ""}</p>
+                    <p className="text-[11px] text-[#888] truncate">{c.email ?? "Sin email"} {c.company ? `| ${c.company}` : ""}</p>
+                  </div>
+                  <Badge text={c.scoreLabel} color={LABEL_COLORS[c.scoreLabel] ?? "#888"} />
+                  <span className="text-[11px] text-[#666]">{c.score}pts</span>
+                </div>
+              ))}
+              <p className="text-[11px] text-[#666] text-center pt-1">{listContacts.total} contacto{listContacts.total !== 1 ? "s" : ""} en total</p>
+            </div>
+          )}
+        </div>
+        <div className="flex gap-2 mt-4 pt-3 border-t border-[#2e2e2e]">
+          <SecondaryButton onClick={handleDownloadCSV}>
+            <Download size={13} /> Descargar CSV
+          </SecondaryButton>
+          <SecondaryButton onClick={handleDownloadExcel}>
+            <Download size={13} /> Descargar Excel
+          </SecondaryButton>
+        </div>
+      </Modal>
     </>
   );
 }
 
 /* ================================================================== */
-/*  Lead Scoring — Config page (still placeholder)                     */
+/*  Lead Scoring — Editable scoring rules                              */
 /* ================================================================== */
 
+interface ScoringFactor {
+  id: string;
+  label: string;
+  points: number;
+  enabled: boolean;
+}
+
+const DEFAULT_FACTORS: ScoringFactor[] = [
+  { id: "has_email", label: "Tiene email", points: 10, enabled: true },
+  { id: "has_phone", label: "Tiene telefono", points: 10, enabled: true },
+  { id: "has_company", label: "Tiene empresa", points: 5, enabled: true },
+  { id: "paid_source", label: "Fuente: Meta Ads / Google Ads", points: 15, enabled: true },
+  { id: "has_deals", label: "Tiene deals asociados", points: 20, enabled: true },
+  { id: "recent_activity", label: "Actividad reciente (7 dias)", points: 10, enabled: true },
+];
+
+const DEFAULT_THRESHOLDS = { hot: 80, warm: 50 };
+
 export function LeadScoringPage() {
+  const utils = trpc.useUtils();
+  const { data: savedConfig, isLoading } = trpc.contacts.getScoringConfig.useQuery();
+
+  const [hotThreshold, setHotThreshold] = useState(DEFAULT_THRESHOLDS.hot);
+  const [warmThreshold, setWarmThreshold] = useState(DEFAULT_THRESHOLDS.warm);
+  const [factors, setFactors] = useState<ScoringFactor[]>(DEFAULT_FACTORS);
+  const [dirty, setDirty] = useState(false);
+  const [recalcResult, setRecalcResult] = useState<{ updated: number } | null>(null);
+
+  // Load saved config once
+  useEffect(() => {
+    if (savedConfig) {
+      setHotThreshold(savedConfig.thresholds.hot);
+      setWarmThreshold(savedConfig.thresholds.warm);
+      setFactors(savedConfig.factors);
+    }
+  }, [savedConfig]);
+
+  const saveMutation = trpc.contacts.saveScoringConfig.useMutation({
+    onSuccess: () => {
+      utils.contacts.getScoringConfig.invalidate();
+      setDirty(false);
+    },
+  });
+
+  const recalcMutation = trpc.contacts.recalculateScores.useMutation({
+    onSuccess: (result) => {
+      setRecalcResult(result);
+      utils.contacts.list.invalidate();
+      utils.contacts.getFilterCounts.invalidate();
+      utils.contacts.listTags.invalidate();
+    },
+  });
+
+  function updateFactor(id: string, field: "points" | "enabled", value: number | boolean) {
+    setFactors((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, [field]: value } : f))
+    );
+    setDirty(true);
+  }
+
+  function handleSave() {
+    saveMutation.mutate({
+      thresholds: { hot: hotThreshold, warm: warmThreshold },
+      factors,
+    });
+  }
+
+  function handleRecalculate() {
+    setRecalcResult(null);
+    recalcMutation.mutate({
+      thresholds: { hot: hotThreshold, warm: warmThreshold },
+      factors,
+    });
+  }
+
+  if (isLoading) {
+    return (
+      <>
+        <SectionHeader title="Lead Scoring" description="Configuracion del scoring automatico de leads" />
+        <div className="space-y-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="rounded-lg border border-[#2e2e2e] p-4 h-24 animate-pulse" style={{ backgroundColor: "#1e1e1e" }} />
+          ))}
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
-      <SectionHeader title="Lead Scoring" description="Configuracion del scoring automatico de leads" />
+      <SectionHeader
+        title="Lead Scoring"
+        description="Configuracion del scoring automatico de leads"
+        action={
+          <div className="flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={saveMutation.isPending || !dirty}
+              className="flex items-center gap-1.5 text-[12px] text-black px-3 py-1.5 rounded font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ backgroundColor: "#3ecf8e" }}
+            >
+              <Save size={13} />
+              {saveMutation.isPending ? "Guardando..." : "Guardar config"}
+            </button>
+            <button
+              onClick={handleRecalculate}
+              disabled={recalcMutation.isPending}
+              className="flex items-center gap-1.5 text-[12px] text-[#ccc] px-3 py-1.5 rounded font-medium border border-[#333] hover:border-[#555] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <RefreshCw size={13} className={recalcMutation.isPending ? "animate-spin" : ""} />
+              {recalcMutation.isPending ? "Recalculando..." : "Recalcular scores"}
+            </button>
+          </div>
+        }
+      />
+
+      {/* Recalculation result */}
+      {recalcResult && (
+        <div className="rounded-lg border border-[#3ecf8e]/30 p-3 mb-4 flex items-center gap-2" style={{ backgroundColor: "rgba(62,207,142,0.06)" }}>
+          <Check size={14} className="text-[#3ecf8e]" />
+          <p className="text-[13px] text-[#ccc]">
+            Scores recalculados para <strong className="text-[#ededed]">{recalcResult.updated}</strong> contactos.
+          </p>
+          <button onClick={() => setRecalcResult(null)} className="ml-auto text-[#666] hover:text-[#ccc]"><X size={14} /></button>
+        </div>
+      )}
+
+      {recalcMutation.error && (
+        <div className="rounded-lg border border-red-500/30 p-3 mb-4" style={{ backgroundColor: "rgba(239,68,68,0.06)" }}>
+          <p className="text-[12px] text-red-400">{recalcMutation.error.message}</p>
+        </div>
+      )}
+
       <div className="space-y-4">
+        {/* Thresholds */}
         <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
-          <h3 className="text-[13px] font-medium text-[#ededed] mb-3">Reglas de Scoring</h3>
-          <div className="space-y-2">
-            {[
-              { rule: "Abrio email", points: "+5" },
-              { rule: "Visito pagina de precios", points: "+15" },
-              { rule: "Descargo recurso", points: "+10" },
-              { rule: "Solicito demo", points: "+25" },
-              { rule: "Sin actividad 30 dias", points: "-10" },
-            ].map((r) => (
-              <div key={r.rule} className="flex items-center justify-between py-2 px-3 rounded" style={{ backgroundColor: "#252525" }}>
-                <span className="text-[13px] text-[#ccc]">{r.rule}</span>
-                <span className={`text-[13px] font-medium ${r.points.startsWith("+") ? "text-[#3ecf8e]" : "text-[#ef4444]"}`}>
-                  {r.points} pts
+          <h3 className="text-[13px] font-medium text-[#ededed] mb-4 flex items-center gap-2">
+            <Zap size={14} className="text-[#f59e0b]" /> Umbrales de clasificacion
+          </h3>
+          <div className="flex gap-4">
+            <div className="flex-1 rounded-lg p-4" style={{ backgroundColor: "#252525" }}>
+              <div className="flex items-center justify-between mb-2">
+                <Badge text="HOT" color="#ef4444" />
+                <span className="text-[18px] font-bold text-[#ef4444]">{hotThreshold}+</span>
+              </div>
+              <label className="text-[11px] text-[#888] block mb-1">Score minimo para HOT</label>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={hotThreshold}
+                onChange={(e) => { setHotThreshold(Number(e.target.value)); setDirty(true); }}
+                className="w-full accent-[#ef4444]"
+              />
+              <div className="flex justify-between text-[10px] text-[#666] mt-1">
+                <span>0</span>
+                <span>
+                  <input
+                    type="number"
+                    value={hotThreshold}
+                    onChange={(e) => { setHotThreshold(Math.min(100, Math.max(0, Number(e.target.value)))); setDirty(true); }}
+                    className="w-12 text-center bg-[#333] border border-[#444] rounded text-[#ededed] text-[11px] px-1 py-0.5"
+                  />
                 </span>
+                <span>100</span>
+              </div>
+            </div>
+            <div className="flex-1 rounded-lg p-4" style={{ backgroundColor: "#252525" }}>
+              <div className="flex items-center justify-between mb-2">
+                <Badge text="WARM" color="#f59e0b" />
+                <span className="text-[18px] font-bold text-[#f59e0b]">{warmThreshold}-{hotThreshold - 1}</span>
+              </div>
+              <label className="text-[11px] text-[#888] block mb-1">Score minimo para WARM</label>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={warmThreshold}
+                onChange={(e) => { setWarmThreshold(Number(e.target.value)); setDirty(true); }}
+                className="w-full accent-[#f59e0b]"
+              />
+              <div className="flex justify-between text-[10px] text-[#666] mt-1">
+                <span>0</span>
+                <span>
+                  <input
+                    type="number"
+                    value={warmThreshold}
+                    onChange={(e) => { setWarmThreshold(Math.min(100, Math.max(0, Number(e.target.value)))); setDirty(true); }}
+                    className="w-12 text-center bg-[#333] border border-[#444] rounded text-[#ededed] text-[11px] px-1 py-0.5"
+                  />
+                </span>
+                <span>100</span>
+              </div>
+            </div>
+            <div className="flex-1 rounded-lg p-4" style={{ backgroundColor: "#252525" }}>
+              <div className="flex items-center justify-between mb-2">
+                <Badge text="COLD" color="#6366f1" />
+                <span className="text-[18px] font-bold text-[#6366f1]">0-{warmThreshold - 1}</span>
+              </div>
+              <p className="text-[11px] text-[#888]">Cualquier contacto con score menor a {warmThreshold} sera clasificado como COLD.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Scoring Factors */}
+        <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+          <h3 className="text-[13px] font-medium text-[#ededed] mb-4 flex items-center gap-2">
+            <Sparkles size={14} className="text-[#3ecf8e]" /> Factores de scoring
+          </h3>
+          <div className="space-y-2">
+            {factors.map((f) => (
+              <div
+                key={f.id}
+                className="flex items-center gap-3 py-3 px-4 rounded-lg transition-colors"
+                style={{ backgroundColor: f.enabled ? "#252525" : "#1a1a1a", opacity: f.enabled ? 1 : 0.5 }}
+              >
+                <button
+                  onClick={() => updateFactor(f.id, "enabled", !f.enabled)}
+                  className="flex-shrink-0 transition-colors"
+                  title={f.enabled ? "Desactivar" : "Activar"}
+                >
+                  {f.enabled ? (
+                    <ToggleRight size={20} className="text-[#3ecf8e]" />
+                  ) : (
+                    <ToggleLeft size={20} className="text-[#555]" />
+                  )}
+                </button>
+                <span className="text-[13px] text-[#ccc] flex-1">{f.label}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-[#888]">Puntos:</span>
+                  <input
+                    type="number"
+                    value={f.points}
+                    onChange={(e) => updateFactor(f.id, "points", Number(e.target.value))}
+                    className="w-16 h-[28px] px-2 rounded border border-[#333] bg-[#333] text-[13px] text-[#ededed] text-center outline-none focus:border-[#3ecf8e]/50"
+                    disabled={!f.enabled}
+                  />
+                  <span className={`text-[13px] font-bold min-w-[50px] text-right ${f.points >= 0 ? "text-[#3ecf8e]" : "text-[#ef4444]"}`}>
+                    {f.points >= 0 ? "+" : ""}{f.points} pts
+                  </span>
+                </div>
               </div>
             ))}
           </div>
         </div>
+
+        {/* Score preview */}
         <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
-          <h3 className="text-[13px] font-medium text-[#ededed] mb-3">Umbrales</h3>
-          <div className="flex gap-4">
-            <div className="flex-1 text-center py-3 rounded" style={{ backgroundColor: "#252525" }}>
-              <Badge text="HOT" color="#ef4444" />
-              <p className="text-[12px] text-[#888] mt-2">Score &ge; 80</p>
-            </div>
-            <div className="flex-1 text-center py-3 rounded" style={{ backgroundColor: "#252525" }}>
-              <Badge text="WARM" color="#f59e0b" />
-              <p className="text-[12px] text-[#888] mt-2">50 &le; Score &lt; 80</p>
-            </div>
-            <div className="flex-1 text-center py-3 rounded" style={{ backgroundColor: "#252525" }}>
-              <Badge text="COLD" color="#6366f1" />
-              <p className="text-[12px] text-[#888] mt-2">Score &lt; 50</p>
+          <h3 className="text-[13px] font-medium text-[#ededed] mb-3 flex items-center gap-2">
+            <Activity size={14} className="text-[#6366f1]" /> Vista previa del score maximo
+          </h3>
+          <div className="flex items-center gap-4">
+            <div className="flex-1">
+              {(() => {
+                const maxScore = factors.filter((f) => f.enabled).reduce((sum, f) => sum + Math.max(0, f.points), 0);
+                const clampedMax = Math.min(maxScore, 100);
+                const labelText = clampedMax >= hotThreshold ? "HOT" : clampedMax >= warmThreshold ? "WARM" : "COLD";
+                const barColor = clampedMax >= hotThreshold ? "#ef4444" : clampedMax >= warmThreshold ? "#f59e0b" : "#6366f1";
+                return (
+                  <>
+                    <div className="w-full h-3 rounded-full overflow-hidden" style={{ backgroundColor: "#2a2a2a" }}>
+                      <div
+                        className="h-3 rounded-full transition-all"
+                        style={{ width: `${clampedMax}%`, backgroundColor: barColor }}
+                      />
+                    </div>
+                    <div className="flex justify-between mt-1">
+                      <span className="text-[10px] text-[#666]">0</span>
+                      <span className="text-[10px] text-[#666]">Score maximo posible: {maxScore} pts</span>
+                      <span className="text-[10px] text-[#666]">100+</span>
+                    </div>
+                    <p className="text-[11px] text-[#888] mt-3">
+                      Un contacto con todos los factores activos obtendria un score de{" "}
+                      <strong className="text-[#ededed]">{maxScore}</strong> puntos, clasificado como{" "}
+                      <strong style={{ color: barColor }}>{labelText}</strong>.
+                    </p>
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>
