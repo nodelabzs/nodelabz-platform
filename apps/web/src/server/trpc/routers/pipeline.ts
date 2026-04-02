@@ -2,6 +2,7 @@ import { z } from "zod";
 import { router, tenantProcedure } from "../init";
 import { prisma } from "@nodelabz/db";
 import { TRPCError } from "@trpc/server";
+import { invokeModel } from "../../ai/router";
 
 export const pipelineRouter = router({
   list: tenantProcedure.query(async ({ ctx }) => {
@@ -118,5 +119,87 @@ export const pipelineRouter = router({
 
       await prisma.pipeline.delete({ where: { id: input.pipelineId } });
       return { success: true };
+    }),
+
+  updateWithAI: tenantProcedure
+    .input(z.object({ instruction: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      // 1. Fetch the default pipeline
+      const pipeline = await prisma.pipeline.findFirst({
+        where: { tenantId: ctx.effectiveTenantId, isDefault: true },
+      });
+
+      if (!pipeline) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "No default pipeline found",
+        });
+      }
+
+      const currentStages = pipeline.stages as Array<{
+        id: string;
+        name: string;
+        color: string;
+        order: number;
+      }>;
+
+      // 2. Call AI to transform stages
+      const systemPrompt = `You are a pipeline editor. Given the current pipeline stages and a user instruction, return ONLY the modified stages array as valid JSON. Each stage has: id (lowercase-slug), name, color (hex), order (number). Keep existing stages unless told to remove them. Do not include any explanation, markdown, or code fences — return ONLY the raw JSON array.`;
+
+      const userMessage = `Current stages:\n${JSON.stringify(currentStages, null, 2)}\n\nInstruction: ${input.instruction}`;
+
+      const aiResponse = await invokeModel({
+        message: userMessage,
+        systemPrompt,
+        tier: "sonnet",
+        maxTokens: 1024,
+      });
+
+      // 3. Parse AI response
+      let newStages: Array<{
+        id: string;
+        name: string;
+        color: string;
+        order: number;
+      }>;
+
+      try {
+        // Strip any markdown code fences if present
+        const cleaned = aiResponse
+          .replace(/```(?:json)?\s*/g, "")
+          .replace(/```\s*/g, "")
+          .trim();
+        newStages = JSON.parse(cleaned);
+      } catch {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "AI returned invalid JSON. Please try rephrasing your instruction.",
+        });
+      }
+
+      // 4. Validate structure
+      if (!Array.isArray(newStages) || newStages.length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "AI returned an empty or invalid stages array.",
+        });
+      }
+
+      for (const stage of newStages) {
+        if (!stage.id || !stage.name || !stage.color || typeof stage.order !== "number") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Invalid stage structure: ${JSON.stringify(stage)}`,
+          });
+        }
+      }
+
+      // 5. Update pipeline
+      const updated = await prisma.pipeline.update({
+        where: { id: pipeline.id },
+        data: { stages: newStages as object },
+      });
+
+      return updated;
     }),
 });

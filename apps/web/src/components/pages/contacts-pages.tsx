@@ -47,6 +47,8 @@ import {
   Zap,
   ToggleLeft,
   ToggleRight,
+  Loader2,
+  Wand2,
 } from "lucide-react";
 
 /* ================================================================== */
@@ -1251,6 +1253,19 @@ export function PipelinePage() {
   const { data: stats } = trpc.deals.getStats.useQuery();
 
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
+  const [aiInstruction, setAiInstruction] = useState("");
+  const [aiSuccess, setAiSuccess] = useState<string | null>(null);
+
+  const utils = trpc.useUtils();
+  const aiMutation = trpc.pipeline.updateWithAI.useMutation({
+    onSuccess: () => {
+      utils.pipeline.list.invalidate();
+      utils.pipeline.get.invalidate();
+      setAiInstruction("");
+      setAiSuccess("Pipeline actualizado con IA");
+      setTimeout(() => setAiSuccess(null), 3000);
+    },
+  });
 
   const stages = useMemo(() => {
     const rawStages = (defaultPipeline?.stages ?? []) as Array<{ id: string; name: string; order: number; color?: string }>;
@@ -1350,6 +1365,59 @@ export function PipelinePage() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* ====== AI PIPELINE EDITOR ====== */}
+      <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 flex-1">
+          <Wand2 size={14} className="text-[#f59e0b] shrink-0" />
+          <input
+            type="text"
+            value={aiInstruction}
+            onChange={(e) => setAiInstruction(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && aiInstruction.trim() && !aiMutation.isPending) {
+                aiMutation.mutate({ instruction: aiInstruction.trim() });
+              }
+            }}
+            placeholder="Editar pipeline con IA — Ej: Agrega una etapa 'Negociacion' despues de 'Propuesta'"
+            className="flex-1 bg-[#1c1c1c] border border-[#2e2e2e] rounded-lg px-3 py-2 text-[13px] text-[#ededed] placeholder:text-[#555] outline-none focus:border-[#f59e0b]/50 transition-colors"
+            disabled={aiMutation.isPending}
+          />
+          <button
+            onClick={() => {
+              if (aiInstruction.trim() && !aiMutation.isPending) {
+                aiMutation.mutate({ instruction: aiInstruction.trim() });
+              }
+            }}
+            disabled={!aiInstruction.trim() || aiMutation.isPending}
+            className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-medium bg-[#f59e0b]/10 text-[#f59e0b] border border-[#f59e0b]/20 hover:bg-[#f59e0b]/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {aiMutation.isPending ? (
+              <>
+                <Loader2 size={13} className="animate-spin" />
+                Procesando...
+              </>
+            ) : (
+              <>
+                <Sparkles size={13} />
+                Aplicar con IA
+              </>
+            )}
+          </button>
+        </div>
+        {aiSuccess && (
+          <span className="text-[12px] text-[#3ecf8e] flex items-center gap-1">
+            <Check size={13} />
+            {aiSuccess}
+          </span>
+        )}
+        {aiMutation.isError && (
+          <span className="text-[12px] text-red-400 flex items-center gap-1">
+            <AlertTriangle size={13} />
+            {aiMutation.error.message}
+          </span>
+        )}
       </div>
 
       {/* ====== MAIN LAYOUT (matching Email Builder's full-height bordered container) ====== */}

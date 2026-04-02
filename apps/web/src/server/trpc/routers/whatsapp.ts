@@ -5,6 +5,7 @@ import { TRPCError } from "@trpc/server";
 import { sendTextMessage, sendTemplateMessage } from "@/server/integrations/whatsapp/client";
 import { profesionalProcedure } from "../middleware/plan-gate";
 import type { AutoReplyRule } from "@/server/integrations/whatsapp/auto-reply";
+import { invokeModel } from "@/server/ai/router";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -397,5 +398,93 @@ export const whatsappRouter = router({
       });
 
       return { success: true, rulesCount: input.rules.length };
+    }),
+
+  /**
+   * AI-powered lead qualification from WhatsApp conversation.
+   */
+  qualifyLead: tenantProcedure
+    .input(z.object({ contactId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const tenantId = ctx.effectiveTenantId;
+
+      // Verify contact belongs to this tenant
+      const contact = await prisma.contact.findFirst({
+        where: { id: input.contactId, tenantId },
+      });
+      if (!contact) throw new TRPCError({ code: "NOT_FOUND" });
+
+      // Fetch last 20 WhatsApp messages
+      const messages = await prisma.message.findMany({
+        where: { contactId: input.contactId, tenantId, channel: "WHATSAPP" },
+        orderBy: { createdAt: "asc" },
+        take: 20,
+      });
+
+      if (messages.length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "No hay mensajes de WhatsApp para analizar.",
+        });
+      }
+
+      // Build conversation transcript
+      const contactName = [contact.firstName, contact.lastName].filter(Boolean).join(" ");
+      const transcript = messages
+        .map((m) => `${m.direction === "INBOUND" ? contactName : "Vendedor"}: ${m.content}`)
+        .join("\n");
+
+      const systemPrompt =
+        "Eres un experto en ventas. Analiza esta conversacion de WhatsApp y determina:\n" +
+        "1. Calificacion del lead (HOT si esta listo para comprar, WARM si tiene interes, COLD si no hay interes claro)\n" +
+        "2. Razonamiento breve (1-2 frases)\n" +
+        "3. Si sugieres crear un deal (solo si el lead mostro interes concreto en un producto/servicio)\n" +
+        "4. Titulo y valor estimado del deal si aplica\n" +
+        "Responde SOLO con JSON valido con esta estructura: { \"scoreLabel\": \"HOT\"|\"WARM\"|\"COLD\", \"reasoning\": string, \"suggestDeal\": boolean, \"dealTitle\"?: string, \"dealValue\"?: number }";
+
+      const raw = await invokeModel({
+        message: `Conversacion con ${contactName}:\n\n${transcript}`,
+        systemPrompt,
+        tier: "sonnet",
+        maxTokens: 512,
+      });
+
+      // Parse AI response — extract JSON from potential markdown fences
+      let analysis: {
+        scoreLabel: "HOT" | "WARM" | "COLD";
+        reasoning: string;
+        suggestDeal: boolean;
+        dealTitle?: string;
+        dealValue?: number;
+      };
+
+      try {
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("No JSON found");
+        analysis = JSON.parse(jsonMatch[0]);
+      } catch {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Error al procesar la respuesta de IA.",
+        });
+      }
+
+      // Validate scoreLabel
+      const validLabels = ["HOT", "WARM", "COLD"] as const;
+      if (!validLabels.includes(analysis.scoreLabel)) {
+        analysis.scoreLabel = "WARM";
+      }
+
+      // Update the contact's scoreLabel
+      const scoreMap = { HOT: 90, WARM: 50, COLD: 10 };
+      await prisma.contact.update({
+        where: { id: input.contactId },
+        data: {
+          scoreLabel: analysis.scoreLabel,
+          score: scoreMap[analysis.scoreLabel],
+        },
+      });
+
+      return analysis;
     }),
 });

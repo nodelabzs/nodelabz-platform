@@ -67,6 +67,8 @@ import {
   RefreshCw,
   Zap,
   Trash2,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
 
 const workflowNodeTypes = {
@@ -104,6 +106,13 @@ export function ConversacionesWAPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState("");
+  const [aiResult, setAiResult] = useState<{
+    scoreLabel: "HOT" | "WARM" | "COLD";
+    reasoning: string;
+    suggestDeal: boolean;
+    dealTitle?: string;
+    dealValue?: number;
+  } | null>(null);
 
   const { data: convData, isLoading } = trpc.whatsapp.listConversations.useQuery({ search: searchTerm || undefined, limit: 30 });
   const conversations = convData?.conversations ?? [];
@@ -120,6 +129,19 @@ export function ConversacionesWAPage() {
       setNewMessage("");
       if (selectedContactId) utils.whatsapp.getMessages.invalidate({ contactId: selectedContactId });
       utils.whatsapp.listConversations.invalidate();
+    },
+  });
+
+  const qualifyMutation = trpc.whatsapp.qualifyLead.useMutation({
+    onSuccess: (data) => setAiResult(data),
+  });
+
+  const { data: pipelines } = trpc.pipeline.list.useQuery();
+  const defaultPipeline = pipelines?.find((p) => p.isDefault) ?? pipelines?.[0];
+
+  const createDealMutation = trpc.deals.create.useMutation({
+    onSuccess: () => {
+      setAiResult((prev) => prev ? { ...prev, suggestDeal: false } : prev);
     },
   });
 
@@ -151,7 +173,7 @@ export function ConversacionesWAPage() {
                 return (
                   <div
                     key={c.contact.id}
-                    onClick={() => setSelectedContactId(c.contact.id)}
+                    onClick={() => { setSelectedContactId(c.contact.id); setAiResult(null); }}
                     className={`px-3 py-2.5 border-b border-[#2e2e2e] cursor-pointer hover:bg-[#252525] transition-colors ${c.contact.id === selectedContactId ? "bg-[#252525]" : ""}`}
                   >
                     <div className="flex items-center justify-between mb-0.5">
@@ -177,11 +199,76 @@ export function ConversacionesWAPage() {
                   <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: "#25D366" }}>
                     <span className="text-[12px] font-bold text-white">{selected.contact.firstName[0]?.toUpperCase() ?? "?"}</span>
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <p className="text-[13px] font-medium text-[#ededed]">{selected.contact.firstName} {selected.contact.lastName ?? ""}</p>
                     <p className="text-[10px] text-[#888]">{selected.contact.phone}</p>
                   </div>
+                  <button
+                    onClick={() => {
+                      setAiResult(null);
+                      qualifyMutation.mutate({ contactId: selected.contact.id });
+                    }}
+                    disabled={qualifyMutation.isPending}
+                    className="flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-md border border-[#333] text-[#ededed] hover:bg-[#252525] transition-colors disabled:opacity-50"
+                  >
+                    {qualifyMutation.isPending ? <Loader2 size={13} className="animate-spin text-[#f59e0b]" /> : <Sparkles size={13} className="text-[#f59e0b]" />}
+                    Calificar con IA
+                  </button>
                 </div>
+                {qualifyMutation.isPending && (
+                  <div className="px-4 py-3 border-b border-[#2e2e2e] flex items-center gap-2" style={{ backgroundColor: "#1a1a2e" }}>
+                    <Loader2 size={14} className="animate-spin text-[#f59e0b]" />
+                    <span className="text-[12px] text-[#888]">Analizando conversacion...</span>
+                  </div>
+                )}
+                {aiResult && (
+                  <div className="px-4 py-3 border-b border-[#2e2e2e] space-y-2" style={{ backgroundColor: "#1a1a2e" }}>
+                    <div className="flex items-center gap-2">
+                      <Sparkles size={13} className="text-[#f59e0b]" />
+                      <span className="text-[12px] font-medium text-[#ededed]">Calificacion IA</span>
+                      <span
+                        className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                        style={{
+                          backgroundColor: aiResult.scoreLabel === "HOT" ? "#dc2626" : aiResult.scoreLabel === "WARM" ? "#f59e0b" : "#6b7280",
+                          color: "#fff",
+                        }}
+                      >
+                        {aiResult.scoreLabel}
+                      </span>
+                      <button onClick={() => setAiResult(null)} className="ml-auto text-[#555] hover:text-[#888] text-[11px]">Cerrar</button>
+                    </div>
+                    <p className="text-[12px] text-[#aaa]">{aiResult.reasoning}</p>
+                    {aiResult.suggestDeal && defaultPipeline && (
+                      <div className="flex items-center gap-2 pt-1">
+                        <span className="text-[11px] text-[#888]">
+                          Deal sugerido: {aiResult.dealTitle} {aiResult.dealValue ? `($${aiResult.dealValue.toLocaleString()})` : ""}
+                        </span>
+                        <button
+                          onClick={() => {
+                            const stages = (defaultPipeline.stages as Array<{ id: string; name: string }>);
+                            const firstStageId = stages?.[0]?.id ?? "new";
+                            createDealMutation.mutate({
+                              contactId: selected.contact.id,
+                              pipelineId: defaultPipeline.id,
+                              title: aiResult.dealTitle ?? "Nuevo deal",
+                              value: aiResult.dealValue,
+                              stageId: firstStageId,
+                            });
+                          }}
+                          disabled={createDealMutation.isPending}
+                          className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-[#3ecf8e] text-black font-medium hover:opacity-90 disabled:opacity-50"
+                        >
+                          {createDealMutation.isPending ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+                          Crear Deal
+                        </button>
+                        {createDealMutation.isSuccess && <span className="text-[10px] text-[#3ecf8e]">Deal creado</span>}
+                      </div>
+                    )}
+                    {qualifyMutation.isError && (
+                      <p className="text-[11px] text-red-400">Error: {qualifyMutation.error.message}</p>
+                    )}
+                  </div>
+                )}
                 <div className="flex-1 p-4 space-y-2 overflow-auto">
                   {messages.map((m) => (
                     <div key={m.id} className={`flex ${m.direction === "OUTBOUND" ? "justify-end" : "justify-start"}`}>
