@@ -59,14 +59,14 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.redirect(
-      `${baseUrl}/dashboard?integration_success=tiktok`
+      `${baseUrl}/auth/oauth-success?platform=TikTok`
     );
   } catch (error) {
     console.error("[TikTok OAuth Callback] Error:", error);
     const message =
       error instanceof Error ? error.message : "unknown_error";
     return NextResponse.redirect(
-      `${baseUrl}/dashboard?error=oauth_failed&detail=${encodeURIComponent(message)}`
+      `${baseUrl}/auth/oauth-success?error=${encodeURIComponent(message)}`
     );
   }
 }

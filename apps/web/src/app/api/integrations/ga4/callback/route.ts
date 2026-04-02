@@ -69,14 +69,14 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.redirect(
-      `${baseUrl}/dashboard?integration_success=ga4`
+      `${baseUrl}/auth/oauth-success?platform=Google%20Analytics%204`
     );
   } catch (error) {
     console.error("[GA4 OAuth Callback] Error:", error);
     const message =
       error instanceof Error ? error.message : "unknown_error";
     return NextResponse.redirect(
-      `${baseUrl}/dashboard?error=oauth_failed&detail=${encodeURIComponent(message)}`
+      `${baseUrl}/auth/oauth-success?error=${encodeURIComponent(message)}`
     );
   }
 }

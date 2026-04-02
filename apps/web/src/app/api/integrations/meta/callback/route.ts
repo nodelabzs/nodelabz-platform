@@ -72,14 +72,14 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.redirect(
-      `${baseUrl}/dashboard?integration_success=meta_ads`
+      `${baseUrl}/auth/oauth-success?platform=Meta%20Ads`
     );
   } catch (error) {
     console.error("[Meta OAuth Callback] Error:", error);
     const message =
       error instanceof Error ? error.message : "unknown_error";
     return NextResponse.redirect(
-      `${baseUrl}/dashboard?error=oauth_failed&detail=${encodeURIComponent(message)}`
+      `${baseUrl}/auth/oauth-success?error=${encodeURIComponent(message)}`
     );
   }
 }

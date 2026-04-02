@@ -107,9 +107,9 @@ export function DashboardShell({
       )}
 
       <TopNavbar
-        tenantName="NodeLabz"
+        tenantName={activeTenantName || "Mi Empresa"}
         userName={displayName}
-        projectName={isInsideCompany ? undefined : "NodeLabz"}
+        projectName={isInsideCompany ? undefined : (activeTenantName || "Mi Empresa")}
         isSuperAdmin={isSuperAdmin}
         companiesContext={companiesContext}
       />

@@ -66,7 +66,6 @@ export function TopNavbar({
             <span className="text-[9px] px-[5px] py-[1px] rounded border border-[#444] text-[#888] font-medium uppercase tracking-widest">
               {plan || "Inicio"}
             </span>
-            <ChevronDown size={12} className="text-[#666]" />
           </Link>
         )}
 
@@ -89,7 +88,6 @@ export function TopNavbar({
             <span className="text-[#444]">/</span>
             <Link href="/dashboard" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
               <span className="text-[#ededed] text-[13px]">{projectName}</span>
-              <ChevronDown size={12} className="text-[#666]" />
             </Link>
             <span className="text-[#444]">/</span>
           </>

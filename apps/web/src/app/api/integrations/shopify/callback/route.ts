@@ -71,14 +71,14 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.redirect(
-      `${baseUrl}/dashboard?integration_success=shopify`
+      `${baseUrl}/auth/oauth-success?platform=Shopify`
     );
   } catch (error) {
     console.error("[Shopify OAuth Callback] Error:", error);
     const message =
       error instanceof Error ? error.message : "unknown_error";
     return NextResponse.redirect(
-      `${baseUrl}/dashboard?error=oauth_failed&detail=${encodeURIComponent(message)}`
+      `${baseUrl}/auth/oauth-success?error=${encodeURIComponent(message)}`
     );
   }
 }

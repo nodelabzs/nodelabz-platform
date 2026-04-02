@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { provisionTenant } from "./provision";
 import { redirect } from "next/navigation";
 import { signUpSchema } from "@nodelabz/shared-types";
@@ -32,31 +33,64 @@ export async function signUpAction(
 
   const { email, password, name, companyName, language } = parsed.data;
 
-  // Create Supabase auth user
-  const supabase = await createClient();
-  const { data: authData, error: authError } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: { name, company_name: companyName },
-    },
-  });
+  // Use admin client (service role key) to create user — bypasses email rate limits
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
-  if (authError) {
-    if (authError.message.includes("already registered")) {
-      return { error: "Este email ya está registrado. Inicia sesión." };
+  let supabaseUserId: string;
+
+  if (serviceRoleKey) {
+    // Admin path: create user with auto-confirm (no verification email sent)
+    const adminClient = createSupabaseClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const { data: adminData, error: adminError } = await adminClient.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { name, company_name: companyName },
+    });
+
+    if (adminError) {
+      if (adminError.message.includes("already") || adminError.message.includes("exists")) {
+        return { error: "Este email ya esta registrado. Inicia sesion." };
+      }
+      return { error: adminError.message };
     }
-    return { error: authError.message };
-  }
 
-  if (!authData.user) {
-    return { error: "Error al crear la cuenta. Intenta de nuevo." };
+    if (!adminData.user) {
+      return { error: "Error al crear la cuenta. Intenta de nuevo." };
+    }
+
+    supabaseUserId = adminData.user.id;
+  } else {
+    // Fallback: regular signup (may hit rate limits)
+    const supabase = await createClient();
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { name, company_name: companyName } },
+    });
+
+    if (authError) {
+      if (authError.message.includes("already registered")) {
+        return { error: "Este email ya esta registrado. Inicia sesion." };
+      }
+      return { error: authError.message };
+    }
+
+    if (!authData.user) {
+      return { error: "Error al crear la cuenta. Intenta de nuevo." };
+    }
+
+    supabaseUserId = authData.user.id;
   }
 
   // Provision tenant + roles + user in our DB
   try {
     await provisionTenant({
-      supabaseId: authData.user.id,
+      supabaseId: supabaseUserId,
       email,
       name,
       companyName,
@@ -67,7 +101,11 @@ export async function signUpAction(
     return { error: "Error al configurar tu cuenta. Contacta soporte." };
   }
 
-  redirect("/auth/loading");
+  // Sign in to establish browser session
+  const supabase = await createClient();
+  await supabase.auth.signInWithPassword({ email, password });
+
+  redirect("/onboarding");
 }
 
 export type InviteSignUpState = {
