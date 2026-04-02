@@ -1,10 +1,18 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, Loader2 } from "lucide-react";
 
 export default function OAuthSuccessPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center" style={{ backgroundColor: "#171717" }}><Loader2 className="animate-spin text-[#3ecf8e]" size={24} /></div>}>
+      <OAuthSuccessContent />
+    </Suspense>
+  );
+}
+
+function OAuthSuccessContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const platform = searchParams.get("platform") || "plataforma";
