@@ -55,14 +55,14 @@ export function TopNavbar({
         {/* Tenant name — use TenantSwitcher for Super Admins */}
         {isSuperAdmin ? (
           <div className="flex items-center gap-1.5">
-            <TenantSwitcher currentTenantName={tenantName || "NodeLabz"} />
+            <TenantSwitcher currentTenantName={tenantName || "Mi Empresa"} />
             <span className="text-[9px] px-[5px] py-[1px] rounded border border-emerald-500/30 text-emerald-400 font-medium uppercase tracking-widest">
               {plan || "Super Admin"}
             </span>
           </div>
         ) : (
           <Link href="/dashboard/org" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
-            <span className="text-[#ededed] text-[13px]">{tenantName || "NodeLabz"}</span>
+            <span className="text-[#ededed] text-[13px]">{tenantName || "Mi Empresa"}</span>
             <span className="text-[9px] px-[5px] py-[1px] rounded border border-[#444] text-[#888] font-medium uppercase tracking-widest">
               {plan || "Inicio"}
             </span>
@@ -128,7 +128,7 @@ export function TopNavbar({
             <div className="absolute right-0 top-[36px] w-[200px] rounded-lg border border-[#2e2e2e] py-1 z-50 shadow-xl" style={{ backgroundColor: '#1c1c1c' }}>
               <div className="px-3 py-2 border-b border-[#2e2e2e]">
                 <p className="text-[13px] text-[#ededed] font-medium">{userName || "Usuario"}</p>
-                <p className="text-[11px] text-[#666]">{tenantName || "NodeLabz"}</p>
+                <p className="text-[11px] text-[#666]">{tenantName || "Mi Empresa"}</p>
               </div>
 
               <Link

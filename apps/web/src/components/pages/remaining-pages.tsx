@@ -1758,7 +1758,7 @@ export function IntegrationPage({ platform }: { platform: string; connected?: bo
 
   return (
     <>
-      <SectionHeader title={platform} description={integration ? `${platform} conectado a NodeLabz` : `Conectar ${platform}`} />
+      <SectionHeader title={platform} description={integration ? `${platform} conectado a tu cuenta` : `Conectar ${platform}`} />
       <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
         {integration ? (
           <div className="space-y-3">

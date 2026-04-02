@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { TopNavbar } from "@/components/ui/top-navbar";
+import { trpc } from "@/lib/trpc";
 import {
   AllCompaniesPage,
   PlatformMetricsPage,
@@ -75,11 +76,13 @@ const contentMap: Record<string, React.ReactNode> = {
 
 export function CompaniesShell({ userName }: { userName: string }) {
   const [activeItem, setActiveItem] = useState("companies");
+  const { data: session } = trpc.auth.getSession.useQuery();
+  const tenantName = session?.tenant?.name ?? "Mi Empresa";
 
   return (
     <div className="flex flex-col w-full h-screen overflow-hidden" style={{ backgroundColor: "#171717" }}>
       <TopNavbar
-        tenantName="NodeLabz"
+        tenantName={tenantName}
         userName={userName}
         isSuperAdmin
         companiesContext={{ companyName: "", companyId: "" }}

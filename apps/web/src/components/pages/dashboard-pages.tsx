@@ -279,7 +279,7 @@ export function HomePage() {
   const totalPipelineValue = dealStats?.totalValue ?? 0;
   const planName = session?.tenant?.plan ?? "INICIO";
   const tenantSlug = session?.tenant?.slug ?? "nodelabz";
-  const tenantName = session?.tenant?.name ?? "NodeLabz";
+  const tenantName = session?.tenant?.name ?? "Mi Empresa";
 
   // Plan display labels
   const planLabels: Record<string, string> = {
@@ -2542,6 +2542,7 @@ function DetailPanel({
 // ── Node Map Page ─────────────────────────────────────────────────────────
 
 export function NodeMapPage() {
+  const { data: session } = trpc.auth.getSession.useQuery();
   const { data: integrations } = trpc.integrations.list.useQuery();
 
   // Build nodes from real integrations + static fallback nodes
@@ -2564,14 +2565,15 @@ export function NodeMapPage() {
       shopify: "Shopify",
     };
 
-    // Central NodeLabz hub
+    // Central hub
+    const hubLabel = session?.tenant?.name ?? "Mi Empresa";
     const nodes: Node<IntegrationNodeData>[] = [
       {
         id: "hub",
         type: "integration",
         position: { x: 400, y: 250 },
         data: {
-          label: "NodeLabz",
+          label: hubLabel,
           icon: "users" as keyof typeof nodeMapIconMap,
           status: "healthy",
           subtitle: "CRM & Data Hub",
@@ -2605,7 +2607,7 @@ export function NodeMapPage() {
     });
 
     return nodes;
-  }, [integrations]);
+  }, [integrations, session]);
 
   const dynamicEdges = useMemo((): Edge[] => {
     return dynamicNodes
