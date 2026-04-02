@@ -230,28 +230,13 @@ export function ConversacionesWAPage() {
 }
 
 export function PlantillasWAPage() {
-  const templates = [
-    { name: "Bienvenida", status: "approved", category: "Marketing" },
-    { name: "Seguimiento Lead", status: "approved", category: "CRM" },
-    { name: "Confirmacion de Cita", status: "pending", category: "Utility" },
-    { name: "Promocion Especial", status: "rejected", category: "Marketing" },
-  ];
-
-  const statusColors: Record<string, string> = { approved: "#3ecf8e", pending: "#f59e0b", rejected: "#ef4444" };
-
   return (
     <>
       <SectionHeader title="Plantillas WhatsApp" description="Plantillas aprobadas por Meta" />
-      <div className="space-y-3">
-        {templates.map((t) => (
-          <div key={t.name} className="rounded-lg border border-[#2e2e2e] p-4 flex items-center justify-between" style={{ backgroundColor: "#1e1e1e" }}>
-            <div>
-              <p className="text-[13px] font-medium text-[#ededed]">{t.name}</p>
-              <p className="text-[11px] text-[#888]">{t.category}</p>
-            </div>
-            <Badge text={t.status === "approved" ? "Aprobada" : t.status === "pending" ? "Pendiente" : "Rechazada"} color={statusColors[t.status]} />
-          </div>
-        ))}
+      <div className="rounded-lg border border-[#2e2e2e] p-12 text-center" style={{ backgroundColor: "#1e1e1e" }}>
+        <FileText size={32} className="text-[#555] mx-auto mb-3" />
+        <p className="text-[14px] text-[#ededed] font-medium mb-1">Sin plantillas de WhatsApp configuradas</p>
+        <p className="text-[12px] text-[#888]">Las plantillas aprobadas por Meta apareceran aqui.</p>
       </div>
     </>
   );
@@ -317,29 +302,32 @@ export function SecuenciasWAPage() {
 }
 
 export function NumeroConectadoPage() {
+  const { data: integrations, isLoading } = trpc.integrations.list.useQuery();
+  const waIntegration = integrations?.find((i) => i.platform === "whatsapp" && i.status === "active");
+
   return (
     <>
       <SectionHeader title="Numero Conectado" description="Configuracion de tu numero de WhatsApp Business" />
-      <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
-        <div className="flex items-center gap-3 mb-4">
-          <Phone size={20} className="text-[#25D366]" />
-          <div>
-            <p className="text-[14px] font-medium text-[#ededed]">+506 8888-8888</p>
-            <p className="text-[11px] text-[#888]">WhatsApp Business API</p>
-          </div>
-          <Badge text="Conectado" color="#3ecf8e" />
-        </div>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between py-2 px-3 rounded" style={{ backgroundColor: "#252525" }}>
-            <span className="text-[12px] text-[#888]">Estado de verificacion</span>
-            <Badge text="Verificado" color="#3ecf8e" />
-          </div>
-          <div className="flex items-center justify-between py-2 px-3 rounded" style={{ backgroundColor: "#252525" }}>
-            <span className="text-[12px] text-[#888]">Tier de mensajeria</span>
-            <span className="text-[12px] text-[#ededed]">Tier 2 (10K/dia)</span>
+      {isLoading ? (
+        <div className="h-24 rounded-lg bg-[#1e1e1e] animate-pulse" />
+      ) : waIntegration ? (
+        <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+          <div className="flex items-center gap-3 mb-4">
+            <Phone size={20} className="text-[#25D366]" />
+            <div>
+              <p className="text-[14px] font-medium text-[#ededed]">{waIntegration.accountId ?? "Numero conectado"}</p>
+              <p className="text-[11px] text-[#888]">WhatsApp Business API</p>
+            </div>
+            <Badge text="Conectado" color="#3ecf8e" />
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="rounded-lg border border-[#2e2e2e] p-12 text-center" style={{ backgroundColor: "#1e1e1e" }}>
+          <Phone size={32} className="text-[#555] mx-auto mb-3" />
+          <p className="text-[14px] text-[#ededed] font-medium mb-1">Sin numero conectado</p>
+          <p className="text-[12px] text-[#888]">Conecta tu numero de WhatsApp Business para comenzar.</p>
+        </div>
+      )}
     </>
   );
 }
@@ -348,22 +336,10 @@ export function ReglasWAPage() {
   return (
     <>
       <SectionHeader title="Reglas" description="Reglas de enrutamiento y respuesta" />
-      <div className="space-y-3">
-        {[
-          { rule: "Horario laboral", desc: "Responder automaticamente fuera de horario (8am-6pm)" },
-          { rule: "Palabras clave", desc: "Detectar 'precio', 'demo', 'cotizacion' y asignar a ventas" },
-          { rule: "Idioma", desc: "Detectar idioma y responder en el mismo" },
-        ].map((r) => (
-          <div key={r.rule} className="rounded-lg border border-[#2e2e2e] p-4 flex items-center justify-between" style={{ backgroundColor: "#1e1e1e" }}>
-            <div>
-              <p className="text-[13px] font-medium text-[#ededed]">{r.rule}</p>
-              <p className="text-[11px] text-[#888]">{r.desc}</p>
-            </div>
-            <button className="w-10 h-5 rounded-full relative" style={{ backgroundColor: "#3ecf8e" }}>
-              <div className="w-4 h-4 rounded-full bg-white absolute right-0.5 top-0.5" />
-            </button>
-          </div>
-        ))}
+      <div className="rounded-lg border border-[#2e2e2e] p-12 text-center" style={{ backgroundColor: "#1e1e1e" }}>
+        <Settings size={32} className="text-[#555] mx-auto mb-3" />
+        <p className="text-[14px] text-[#ededed] font-medium mb-1">Sin reglas de automatizacion configuradas</p>
+        <p className="text-[12px] text-[#888]">Crea reglas para enrutar y responder mensajes automaticamente.</p>
       </div>
     </>
   );
@@ -416,16 +392,21 @@ export function CanalSocialPage({ canal }: { canal: string }) {
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
           <p className="text-[11px] text-[#888] mb-1">Seguidores</p>
-          <p className="text-[20px] font-semibold text-[#ededed]">2,450</p>
+          <p className="text-[20px] font-semibold text-[#555]">—</p>
         </div>
         <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
           <p className="text-[11px] text-[#888] mb-1">Engagement</p>
-          <p className="text-[20px] font-semibold text-[#ededed]">4.2%</p>
+          <p className="text-[20px] font-semibold text-[#555]">—</p>
         </div>
         <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
           <p className="text-[11px] text-[#888] mb-1">Posts este mes</p>
-          <p className="text-[20px] font-semibold text-[#ededed]">12</p>
+          <p className="text-[20px] font-semibold text-[#555]">—</p>
         </div>
+      </div>
+      <div className="rounded-lg border border-[#2e2e2e] p-8 text-center" style={{ backgroundColor: "#1e1e1e" }}>
+        <Share2 size={32} className="text-[#555] mx-auto mb-2" />
+        <p className="text-[13px] text-[#888]">Sin datos</p>
+        <p className="text-[11px] text-[#666] mt-1">Conecta tu cuenta de {canal} para ver metricas reales</p>
       </div>
     </>
   );
@@ -970,29 +951,13 @@ export function TriggersPage({ type }: { type: string }) {
 }
 
 export function EjecucionesRecientesPage() {
-  const executions = [
-    { workflow: "Lead HOT Follow-up", status: "success", contact: "Maria Rodriguez", time: "Hace 2h" },
-    { workflow: "Welcome Email", status: "success", contact: "Carlos Mora", time: "Hace 30m" },
-    { workflow: "Lead HOT Follow-up", status: "error", contact: "Ana Jimenez", time: "Hace 4h" },
-    { workflow: "Re-engagement 30d", status: "success", contact: "Laura Hernandez", time: "Ayer" },
-  ];
-
   return (
     <>
       <SectionHeader title="Ejecuciones Recientes" description="Historial de automatizaciones ejecutadas" />
-      <div className="space-y-2">
-        {executions.map((e, i) => (
-          <div key={i} className="rounded-lg border border-[#2e2e2e] p-3 flex items-center gap-3" style={{ backgroundColor: "#1e1e1e" }}>
-            {e.status === "success" ? <CheckCircle size={14} className="text-[#3ecf8e]" /> : <AlertTriangle size={14} className="text-[#ef4444]" />}
-            <div className="flex-1">
-              <p className="text-[13px] text-[#ededed]">
-                <span className="font-medium">{e.workflow}</span>
-                <span className="text-[#888]"> — {e.contact}</span>
-              </p>
-            </div>
-            <span className="text-[11px] text-[#666]">{e.time}</span>
-          </div>
-        ))}
+      <div className="rounded-lg border border-[#2e2e2e] p-12 text-center" style={{ backgroundColor: "#1e1e1e" }}>
+        <RefreshCw size={32} className="text-[#555] mx-auto mb-3" />
+        <p className="text-[14px] text-[#ededed] font-medium mb-1">Sin ejecuciones recientes</p>
+        <p className="text-[12px] text-[#888]">Las ejecuciones de workflows apareceran aqui.</p>
       </div>
     </>
   );
@@ -1021,27 +986,40 @@ export function ErroresAutomationPage() {
 // ============================
 
 export function ResumenEjecutivoPage() {
+  const { data: summary, isLoading } = trpc.dashboard.getSummary.useQuery();
+
+  const fmtCurrency = (n: number) => n >= 1000 ? `$${(n / 1000).toFixed(1)}K` : `$${n}`;
+  const conversionRate = summary && summary.totalContacts > 0
+    ? ((summary.totalConversions / summary.totalContacts) * 100).toFixed(1)
+    : "0.0";
+
   return (
     <>
       <SectionHeader title="Resumen Ejecutivo" description="Vista general del rendimiento del negocio" />
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
-          <p className="text-[11px] text-[#888] mb-1">Revenue</p>
-          <p className="text-[20px] font-semibold text-[#ededed]">$12,450</p>
+      {isLoading ? (
+        <div className="grid grid-cols-4 gap-4 mb-6">
+          {[1, 2, 3, 4].map((i) => <div key={i} className="h-20 rounded-lg bg-[#1e1e1e] animate-pulse" />)}
         </div>
-        <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
-          <p className="text-[11px] text-[#888] mb-1">Leads</p>
-          <p className="text-[20px] font-semibold text-[#ededed]">384</p>
+      ) : (
+        <div className="grid grid-cols-4 gap-4 mb-6">
+          <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+            <p className="text-[11px] text-[#888] mb-1">Revenue</p>
+            <p className="text-[20px] font-semibold text-[#ededed]">{fmtCurrency(summary?.totalRevenue ?? 0)}</p>
+          </div>
+          <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+            <p className="text-[11px] text-[#888] mb-1">Leads</p>
+            <p className="text-[20px] font-semibold text-[#ededed]">{summary?.totalContacts ?? 0}</p>
+          </div>
+          <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+            <p className="text-[11px] text-[#888] mb-1">Conversion</p>
+            <p className="text-[20px] font-semibold text-[#ededed]">{conversionRate}%</p>
+          </div>
+          <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+            <p className="text-[11px] text-[#888] mb-1">ROAS</p>
+            <p className="text-[20px] font-semibold text-[#ededed]">{summary?.overallRoas?.toFixed(1) ?? "0.0"}x</p>
+          </div>
         </div>
-        <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
-          <p className="text-[11px] text-[#888] mb-1">Conversion</p>
-          <p className="text-[20px] font-semibold text-[#ededed]">3.2%</p>
-        </div>
-        <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
-          <p className="text-[11px] text-[#888] mb-1">ROAS</p>
-          <p className="text-[20px] font-semibold text-[#ededed]">4.2x</p>
-        </div>
-      </div>
+      )}
       <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e", height: 300 }}>
         <BarChart3 size={32} className="text-[#555] mx-auto mb-2" />
         <p className="text-[13px] text-[#888] text-center">Grafico de tendencias del negocio</p>
@@ -1105,58 +1083,10 @@ const rpMetricGroups: {
   },
 ];
 
-const rpSummaryCards = [
-  { label: "Revenue", value: "$45,200", change: "+12%", up: true },
-  { label: "Leads", value: "1,247", change: "+23%", up: true },
-  { label: "ROAS", value: "4.2x", change: "+15%", up: true },
-  { label: "Win Rate", value: "7.1%", change: "-2%", up: false },
-];
+// rpSummaryCards, rpFunnelStages, rpChannelData, rpTreemapData, rpRevenueData
+// are now derived from real data inside ReportePersonalizadoPage
 
-const rpFunnelStages = [
-  { stage: "Impresiones", value: 125000, width: 100, color: "#3b82f6" },
-  { stage: "Clics", value: 8750, width: 70, color: "#06b6d4" },
-  { stage: "Leads", value: 1247, width: 50, color: "#22c55e" },
-  { stage: "Calificados", value: 450, width: 35, color: "#eab308" },
-  { stage: "Deals", value: 156, width: 20, color: "#f97316" },
-  { stage: "Cerrados", value: 42, width: 10, color: "#3ecf8e" },
-];
-
-const rpChannelData = [
-  { channel: "Meta Ads", spend: 4200, revenue: 18500, roas: 4.4 },
-  { channel: "Google Ads", spend: 3100, revenue: 14200, roas: 4.6 },
-  { channel: "TikTok", spend: 1200, revenue: 4800, roas: 4.0 },
-  { channel: "Email", spend: 800, revenue: 5200, roas: 6.5 },
-  { channel: "WhatsApp", spend: 400, revenue: 2500, roas: 6.3 },
-];
-
-const rpTreemapData = [
-  { name: "Meta Ads", size: 4200, color: "#3b82f6" },
-  { name: "Google Ads", size: 3100, color: "#f59e0b" },
-  { name: "TikTok", size: 1200, color: "#ef4444" },
-  { name: "Email Tools", size: 800, color: "#8b5cf6" },
-  { name: "WhatsApp", size: 400, color: "#22c55e" },
-  { name: "Otros", size: 300, color: "#6b7280" },
-];
-
-const rpRevenueData = [
-  { month: "Sep", revenue: 28000, predicted: null },
-  { month: "Oct", revenue: 31500, predicted: null },
-  { month: "Nov", revenue: 35200, predicted: null },
-  { month: "Dic", revenue: 38900, predicted: null },
-  { month: "Ene", revenue: 40300, predicted: null },
-  { month: "Feb", revenue: 45200, predicted: 45200 },
-  { month: "Mar", revenue: null, predicted: 51000 },
-  { month: "Abr", revenue: null, predicted: 57500 },
-];
-
-const rpTreemapColors: Record<string, string> = {
-  "Meta Ads": "#3b82f6",
-  "Google Ads": "#f59e0b",
-  "TikTok": "#ef4444",
-  "Email Tools": "#8b5cf6",
-  "WhatsApp": "#22c55e",
-  "Otros": "#6b7280",
-};
+const rpTreemapColors: Record<string, string> = {};
 
 function RpCustomTreemapContent(props: {
   x: number;
@@ -1165,11 +1095,12 @@ function RpCustomTreemapContent(props: {
   height: number;
   name?: string;
   size?: number;
+  color?: string;
   index?: number;
 }) {
   const { x, y, width, height, name, size } = props;
   if (!width || !height || width < 4 || height < 4) return null;
-  const color = rpTreemapColors[name || ""] || "#3ecf8e";
+  const color = props.color || rpTreemapColors[name || ""] || "#3ecf8e";
   return (
     <g>
       <rect
@@ -1258,9 +1189,53 @@ const rpBtnAccent: React.CSSProperties = {
 };
 
 export function ReportePersonalizadoPage() {
+  const { data: summary, isLoading } = trpc.dashboard.getSummary.useQuery();
   const [metrics, setMetrics] = useState(rpMetricGroups);
   const [reportName] = useState("Reporte Ejecutivo - Febrero 2026");
   const [period] = useState("Febrero 2026");
+
+  const fmtCurrency = (n: number) => n >= 1000 ? `$${(n / 1000).toFixed(1)}K` : `$${n}`;
+
+  const channelBreakdown = summary?.channelBreakdown ?? [];
+  const dailyMetrics = summary?.dailyMetrics ?? [];
+
+  const rpSummaryCards = [
+    { label: "Revenue", value: fmtCurrency(summary?.totalRevenue ?? 0), change: "--", up: true },
+    { label: "Leads", value: String(summary?.totalContacts ?? 0), change: "--", up: true },
+    { label: "ROAS", value: `${summary?.overallRoas?.toFixed(1) ?? "0.0"}x`, change: "--", up: true },
+    { label: "Win Rate", value: summary?.totalContacts ? `${((summary.totalConversions / summary.totalContacts) * 100).toFixed(1)}%` : "0.0%", change: "--", up: true },
+  ];
+
+  const totalLeads = summary?.totalContacts ?? 0;
+  const totalDeals = summary?.totalDeals ?? 0;
+  const rpFunnelStages = [
+    { stage: "Leads", value: totalLeads, width: 100, color: "#22c55e" },
+    { stage: "Deals", value: totalDeals, width: totalLeads > 0 ? Math.round((totalDeals / totalLeads) * 100) : 0, color: "#f97316" },
+    { stage: "Conversiones", value: summary?.totalConversions ?? 0, width: totalLeads > 0 ? Math.round(((summary?.totalConversions ?? 0) / totalLeads) * 100) : 0, color: "#3ecf8e" },
+  ];
+
+  const rpChannelData = channelBreakdown.map((ch) => ({
+    channel: ch.platform,
+    spend: ch.spend,
+    revenue: ch.revenue,
+    roas: ch.roas,
+  }));
+
+  const channelColors = ["#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#22c55e", "#6b7280"];
+  const rpTreemapData = channelBreakdown.map((ch, i) => ({
+    name: ch.platform,
+    size: ch.spend,
+    color: channelColors[i % channelColors.length] as string,
+  }));
+
+  // Build dynamic treemap color map
+  rpTreemapData.forEach((t) => { rpTreemapColors[t.name] = t.color; });
+
+  const rpRevenueData = dailyMetrics.map((d: { date: string; revenue: number }) => ({
+    month: new Date(d.date).toLocaleDateString("es", { month: "short", day: "numeric" }),
+    revenue: d.revenue,
+    predicted: null,
+  }));
 
   const toggleMetric = (groupIdx: number, itemIdx: number) => {
     setMetrics((prev) => {
@@ -1379,6 +1354,12 @@ export function ReportePersonalizadoPage() {
 
         {/* ---- MAIN CONTENT ---- */}
         <main className="flex-1 overflow-y-auto p-6">
+          {isLoading ? (
+            <div className="space-y-6">
+              {[1, 2, 3].map((i) => <div key={i} className="h-32 rounded-lg bg-[#1e1e1e] animate-pulse" />)}
+            </div>
+          ) : (
+          <>
           {/* Section 1 — Resumen Ejecutivo */}
           <RpSectionTitle title="Resumen Ejecutivo" />
           <div
@@ -1660,6 +1641,8 @@ export function ReportePersonalizadoPage() {
               </p>
             </div>
           </div>
+          </>
+          )}
         </main>
       </div>
     </>

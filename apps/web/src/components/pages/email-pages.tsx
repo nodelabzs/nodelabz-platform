@@ -126,7 +126,7 @@ const DEFAULT_BLOCKS: EmailBlock[] = [
     id: "block-6",
     type: "text",
     content: {
-      text: "NodeLabz Inc. | Cancelar suscripcion",
+      text: "Tu Empresa | Cancelar suscripcion",
       fontSize: 12,
       align: "center",
       color: "#999999",
