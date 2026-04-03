@@ -219,6 +219,7 @@ enum Channel {
   WHATSAPP
   SMS
   INSTAGRAM_DM
+  FACEBOOK_DM
   VOICE
 }
 

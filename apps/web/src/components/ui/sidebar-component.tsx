@@ -134,6 +134,7 @@ const contentMap: Record<string, DetailContent> = {
       { title: "CUENTA", items: [{ label: "Perfil", isActive: true }, { label: "Equipo" }, { label: "Roles y permisos" }] },
       { title: "FACTURACION", items: [{ label: "Plan actual" }, { label: "Metodo de pago" }, { label: "Historial" }] },
       { title: "PLATAFORMA", items: [{ label: "Idioma" }, { label: "Notificaciones" }, { label: "API Keys" }] },
+      { title: "IA", items: [{ label: "Contexto de Negocio" }] },
     ],
   },
 };

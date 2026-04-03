@@ -17,10 +17,12 @@ import { emailTemplatesRouter } from "./routers/email-templates";
 import { emailCampaignsRouter } from "./routers/email-campaigns";
 import { sequencesRouter } from "./routers/sequences";
 import { whatsappRouter } from "./routers/whatsapp";
+import { socialMessagesRouter } from "./routers/social-messages";
 import { notificationsRouter } from "./routers/notifications";
 import { reportsRouter } from "./routers/reports";
 import { dashboardRouter } from "./routers/dashboard";
 import { tenantRouter } from "./routers/tenant";
+import { businessContextRouter } from "./routers/business-context";
 
 export const appRouter = router({
   health: publicProcedure.query(() => ({ status: "ok" })),
@@ -41,10 +43,12 @@ export const appRouter = router({
   emailCampaigns: emailCampaignsRouter,
   sequences: sequencesRouter,
   whatsapp: whatsappRouter,
+  socialMessages: socialMessagesRouter,
   notifications: notificationsRouter,
   reports: reportsRouter,
   dashboard: dashboardRouter,
   tenant: tenantRouter,
+  businessContext: businessContextRouter,
 });
 
 export type AppRouter = typeof appRouter;

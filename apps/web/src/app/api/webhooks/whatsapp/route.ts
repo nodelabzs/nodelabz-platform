@@ -6,6 +6,7 @@ import {
   isBusinessHours,
   type AutoReplyRule,
 } from "@/server/integrations/whatsapp/auto-reply";
+import { generateAutoReply } from "@/server/ai/auto-reply";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,151 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+}
+
+// ─── AI Auto-Reply Processing (fire-and-forget) ─────────────────────────────
+
+async function processAiAutoReply(params: {
+  tenantId: string;
+  contactId: string;
+  textBody: string;
+  phoneNumberId: string;
+  accessToken: string;
+  from: string;
+}) {
+  const { tenantId, contactId, textBody, phoneNumberId, accessToken, from } =
+    params;
+
+  try {
+    // Fetch recent conversation history (last 20 messages)
+    const recentMessages = await prisma.message.findMany({
+      where: { contactId, tenantId, channel: "WHATSAPP" },
+      orderBy: { createdAt: "asc" },
+      take: 20,
+      select: { direction: true, content: true },
+    });
+
+    // Build conversation history (exclude the current inbound message,
+    // which is the last one we just inserted)
+    const conversationHistory = recentMessages.slice(0, -1).map((m) => ({
+      role: m.direction === "INBOUND" ? "user" : "assistant",
+      content: m.content,
+    }));
+
+    const result = await generateAutoReply({
+      tenantId,
+      contactId,
+      inboundMessage: textBody,
+      conversationHistory,
+    });
+
+    // Update contact score if provided
+    if (result.scoreLabel) {
+      const scoreMap = { HOT: 90, WARM: 50, COLD: 10 } as const;
+      await prisma.contact.update({
+        where: { id: contactId },
+        data: {
+          scoreLabel: result.scoreLabel,
+          score: scoreMap[result.scoreLabel],
+        },
+      });
+    }
+
+    // Send the AI reply via WhatsApp
+    if (result.shouldReply && result.reply) {
+      const { messageId } = await sendTextMessage({
+        phoneNumberId,
+        to: from,
+        text: result.reply,
+        accessToken,
+      });
+
+      // Store the outbound AI reply
+      await prisma.message.create({
+        data: {
+          tenantId,
+          contactId,
+          channel: "WHATSAPP",
+          direction: "OUTBOUND",
+          content: result.reply,
+          metadata: {
+            waMessageId: messageId,
+            autoReply: true,
+            aiGenerated: true,
+          },
+          status: "sent",
+        },
+      });
+    }
+
+    // Auto-create a deal if suggested
+    if (result.suggestDeal && result.dealTitle) {
+      // Check if createDeals is enabled in business context
+      const memory = await prisma.aiMemory.findUnique({
+        where: {
+          tenantId_category_key: {
+            tenantId,
+            category: "business_context",
+            key: "default",
+          },
+        },
+      });
+
+      let createDealsEnabled = false;
+      if (memory) {
+        try {
+          const ctx = JSON.parse(memory.value);
+          createDealsEnabled = ctx.createDeals === true;
+        } catch {
+          // ignore parse error
+        }
+      }
+
+      if (createDealsEnabled) {
+        // Find default pipeline and its first stage
+        const pipeline = await prisma.pipeline.findFirst({
+          where: { tenantId, isDefault: true },
+        });
+
+        if (pipeline) {
+          const stages = pipeline.stages as Array<{ id: string; name: string }>;
+          const firstStage = stages?.[0];
+
+          if (firstStage) {
+            await prisma.deal.create({
+              data: {
+                tenantId,
+                contactId,
+                pipelineId: pipeline.id,
+                title: result.dealTitle,
+                value: result.dealValue ?? null,
+                stageId: firstStage.id,
+              },
+            });
+
+            await prisma.activity.create({
+              data: {
+                tenantId,
+                contactId,
+                type: "deal_created",
+                subject: "Deal auto-creado por IA",
+                body: `Deal "${result.dealTitle}" creado automáticamente basado en conversación de WhatsApp.`,
+                metadata: {
+                  source: "ai_auto_reply",
+                  dealTitle: result.dealTitle,
+                  dealValue: result.dealValue,
+                  scoreLabel: result.scoreLabel,
+                },
+              },
+            });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    // Silently fail — never block or crash the webhook for AI processing
+    console.error("[ai-auto-reply] Error processing auto-reply:", err);
+  }
 }
 
 // ─── POST: Incoming Messages ─────────────────────────────────────────────────
@@ -156,7 +302,10 @@ export async function POST(req: Request) {
             },
           });
 
-          // Check auto-reply rules
+          // Track whether a rule-based auto-reply was sent
+          let ruleReplied = false;
+
+          // Check auto-reply rules (rule-based, existing logic)
           const autoReplyRules = (
             (integration.metadata as Record<string, unknown>) || {}
           ).autoReplyRules as AutoReplyRule[] | undefined;
@@ -193,8 +342,24 @@ export async function POST(req: Request) {
                     status: "sent",
                   },
                 });
+
+                ruleReplied = true;
               }
             }
+          }
+
+          // Fire-and-forget: AI auto-reply (only if no rule-based reply was sent)
+          if (!ruleReplied) {
+            processAiAutoReply({
+              tenantId,
+              contactId: contact.id,
+              textBody,
+              phoneNumberId,
+              accessToken: integration.accessToken,
+              from,
+            }).catch((err) => {
+              console.error("[webhook] AI auto-reply background error:", err);
+            });
           }
         }
       }

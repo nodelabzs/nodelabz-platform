@@ -75,6 +75,7 @@ import {
   IdiomaPage,
   NotificacionesPage,
   ApiKeysPage,
+  BusinessContextPage,
 } from "./remaining-pages";
 
 import { FormBuilderPage } from "./form-builder-page";
@@ -181,6 +182,7 @@ const CONTENT_MAP: Record<string, Record<string, React.ReactNode>> = {
     "Idioma": <IdiomaPage />,
     "Notificaciones": <NotificacionesPage />,
     "API Keys": <ApiKeysPage />,
+    "Contexto de Negocio": <BusinessContextPage />,
   },
 };
 

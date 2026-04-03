@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { MarkdownContent } from "@/components/ui/chat/markdown-content";
 import {
@@ -1228,8 +1228,63 @@ export function CanalSocialPage({ canal }: { canal: string }) {
 }
 
 export function BandejaSocialPage() {
-  const [activeTab, setActiveTab] = useState("Todos");
-  const tabs = ["Todos", "Facebook", "Instagram", "LinkedIn"];
+  const [activeTab, setActiveTab] = useState<"Todos" | "Facebook" | "Instagram">("Todos");
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [messageText, setMessageText] = useState("");
+
+  const tabs = ["Todos", "Facebook", "Instagram"] as const;
+
+  const channelFilter =
+    activeTab === "Facebook"
+      ? ("FACEBOOK_DM" as const)
+      : activeTab === "Instagram"
+        ? ("INSTAGRAM_DM" as const)
+        : undefined;
+
+  const { data: convData, isLoading } = trpc.socialMessages.listConversations.useQuery({
+    channel: channelFilter,
+    search: searchTerm || undefined,
+    limit: 30,
+  });
+
+  const { data: msgData } = trpc.socialMessages.getMessages.useQuery(
+    { contactId: selectedContactId!, channel: channelFilter },
+    { enabled: !!selectedContactId }
+  );
+
+  const utils = trpc.useUtils();
+  const sendMutation = trpc.socialMessages.send.useMutation({
+    onSuccess: () => {
+      setMessageText("");
+      if (selectedContactId) {
+        utils.socialMessages.getMessages.invalidate({ contactId: selectedContactId });
+        utils.socialMessages.listConversations.invalidate();
+      }
+    },
+  });
+
+  const conversations = convData?.conversations ?? [];
+  const messages = [...(msgData?.messages ?? [])].reverse();
+
+  const selectedConv = conversations.find((c) => c.contact.id === selectedContactId);
+  const selectedChannel = selectedConv?.lastMessage?.channel as "INSTAGRAM_DM" | "FACEBOOK_DM" | undefined;
+
+  const handleSend = () => {
+    if (!selectedContactId || !messageText.trim() || !selectedChannel) return;
+    if (selectedChannel !== "INSTAGRAM_DM" && selectedChannel !== "FACEBOOK_DM") return;
+    sendMutation.mutate({
+      contactId: selectedContactId,
+      channel: selectedChannel,
+      message: messageText.trim(),
+    });
+  };
+
+  const getChannelIcon = (channel?: string) => {
+    if (channel === "INSTAGRAM_DM") return <Instagram size={12} className="text-pink-400" />;
+    if (channel === "FACEBOOK_DM") return <Facebook size={12} className="text-blue-400" />;
+    return <MessageCircle size={12} className="text-[#555]" />;
+  };
 
   return (
     <>
@@ -1240,7 +1295,7 @@ export function BandejaSocialPage() {
         {tabs.map((tab) => (
           <button
             key={tab}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => { setActiveTab(tab); setSelectedContactId(null); }}
             className="px-4 py-2 text-[12px] rounded-t-lg transition-colors"
             style={{
               color: activeTab === tab ? "#3ecf8e" : "#888",
@@ -1264,32 +1319,148 @@ export function BandejaSocialPage() {
               <input
                 type="text"
                 placeholder="Buscar conversaciones..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
                 className="bg-transparent text-[12px] text-[#ededed] placeholder:text-[#555] outline-none flex-1"
               />
             </div>
           </div>
 
-          {/* Empty conversation list */}
-          <div className="flex flex-col items-center justify-center py-16 px-4">
-            <MessageCircle size={28} className="text-[#444] mb-3" />
-            <p className="text-[12px] text-[#666] text-center">Sin conversaciones</p>
-          </div>
+          {/* Conversation list */}
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 size={20} className="text-[#555] animate-spin" />
+            </div>
+          ) : conversations.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 px-4">
+              <MessageCircle size={28} className="text-[#444] mb-3" />
+              <p className="text-[12px] text-[#666] text-center">Sin conversaciones</p>
+            </div>
+          ) : (
+            <div className="overflow-y-auto" style={{ maxHeight: 420 }}>
+              {conversations.map((conv) => {
+                const isActive = conv.contact.id === selectedContactId;
+                const name = [conv.contact.firstName, conv.contact.lastName].filter(Boolean).join(" ");
+                return (
+                  <button
+                    key={conv.contact.id}
+                    onClick={() => setSelectedContactId(conv.contact.id)}
+                    className="w-full text-left px-4 py-3 border-b border-[#2e2e2e] transition-colors hover:bg-[#252525]"
+                    style={{ backgroundColor: isActive ? "#252525" : "transparent" }}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        {getChannelIcon(conv.lastMessage?.channel)}
+                        <span className="text-[13px] text-[#ededed] font-medium truncate max-w-[140px]">{name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {conv.unreadCount > 0 && (
+                          <span className="w-5 h-5 rounded-full bg-[#3ecf8e] text-[10px] text-black font-bold flex items-center justify-center">
+                            {conv.unreadCount}
+                          </span>
+                        )}
+                        {conv.lastMessage?.createdAt && (
+                          <span className="text-[10px] text-[#555]">
+                            {new Date(conv.lastMessage.createdAt).toLocaleDateString("es", { day: "2-digit", month: "short" })}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-[#888] truncate">
+                      {conv.lastMessage?.direction === "OUTBOUND" && "Tu: "}
+                      {conv.lastMessage?.content ?? ""}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Right panel — message thread */}
-        <div className="md:col-span-2 flex flex-col items-center justify-center px-6">
-          <div className="w-16 h-16 rounded-full bg-[#252525] flex items-center justify-center mb-4">
-            <Mail size={24} className="text-[#444]" />
+        {selectedContactId && messages.length > 0 ? (
+          <div className="md:col-span-2 flex flex-col">
+            {/* Header */}
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-[#2e2e2e]">
+              {getChannelIcon(selectedChannel)}
+              <span className="text-[13px] text-[#ededed] font-medium">
+                {[selectedConv?.contact.firstName, selectedConv?.contact.lastName].filter(Boolean).join(" ")}
+              </span>
+              <span className="text-[10px] text-[#555] ml-auto">
+                {selectedChannel === "INSTAGRAM_DM" ? "Instagram DM" : selectedChannel === "FACEBOOK_DM" ? "Facebook Messenger" : ""}
+              </span>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3" style={{ maxHeight: 360 }}>
+              {messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex ${msg.direction === "OUTBOUND" ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className="max-w-[70%] px-3 py-2 rounded-lg text-[12px]"
+                    style={{
+                      backgroundColor: msg.direction === "OUTBOUND" ? "#3ecf8e20" : "#252525",
+                      color: msg.direction === "OUTBOUND" ? "#3ecf8e" : "#ededed",
+                    }}
+                  >
+                    <p>{msg.content}</p>
+                    <p className="text-[9px] mt-1 opacity-50">
+                      {new Date(msg.createdAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Send input */}
+            {(selectedChannel === "INSTAGRAM_DM" || selectedChannel === "FACEBOOK_DM") && (
+              <div className="border-t border-[#2e2e2e] p-3">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Escribe un mensaje..."
+                    value={messageText}
+                    onChange={(e) => setMessageText(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+                    className="flex-1 px-3 py-2 rounded-lg border border-[#333] bg-[#222] text-[12px] text-[#ededed] placeholder:text-[#555] outline-none focus:border-[#3ecf8e]/50"
+                  />
+                  <button
+                    onClick={handleSend}
+                    disabled={sendMutation.isPending || !messageText.trim()}
+                    className="px-3 py-2 rounded-lg transition-colors disabled:opacity-40"
+                    style={{ backgroundColor: "#3ecf8e20" }}
+                  >
+                    {sendMutation.isPending ? (
+                      <Loader2 size={14} className="text-[#3ecf8e] animate-spin" />
+                    ) : (
+                      <Send size={14} className="text-[#3ecf8e]" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-          <p className="text-[14px] text-[#888] font-medium mb-1">Sin mensajes</p>
-          <p className="text-[12px] text-[#666] text-center max-w-xs">
-            Los mensajes de tus redes sociales apareceran aqui.
-          </p>
-          <div className="flex items-center gap-2 mt-5 px-4 py-2.5 rounded-lg border border-[#3ecf8e]/20 cursor-pointer hover:border-[#3ecf8e]/40 transition-colors" style={{ backgroundColor: "#3ecf8e10" }}>
-            <Plug size={14} className="text-[#3ecf8e]" />
-            <span className="text-[12px] text-[#3ecf8e]">Conectar redes sociales</span>
+        ) : (
+          <div className="md:col-span-2 flex flex-col items-center justify-center px-6">
+            <div className="w-16 h-16 rounded-full bg-[#252525] flex items-center justify-center mb-4">
+              <Mail size={24} className="text-[#444]" />
+            </div>
+            <p className="text-[14px] text-[#888] font-medium mb-1">
+              {selectedContactId ? "Sin mensajes" : "Selecciona una conversacion"}
+            </p>
+            <p className="text-[12px] text-[#666] text-center max-w-xs">
+              Los mensajes de Facebook e Instagram apareceran aqui.
+            </p>
+            {conversations.length === 0 && (
+              <div className="flex items-center gap-2 mt-5 px-4 py-2.5 rounded-lg border border-[#3ecf8e]/20 cursor-pointer hover:border-[#3ecf8e]/40 transition-colors" style={{ backgroundColor: "#3ecf8e10" }}>
+                <Plug size={14} className="text-[#3ecf8e]" />
+                <span className="text-[12px] text-[#3ecf8e]">Conectar redes sociales</span>
+              </div>
+            )}
           </div>
-        </div>
+        )}
       </div>
     </>
   );
@@ -3606,6 +3777,444 @@ export function ApiKeysPage() {
             </code>
             <button className="text-[11px] px-3 py-1.5 rounded border border-[#333] text-[#ccc]">Copiar</button>
           </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ============================
+// BUSINESS CONTEXT / AI KNOWLEDGE BASE
+// ============================
+
+type ServiceItem = { name: string; description: string; price?: string };
+type FaqItem = { question: string; answer: string };
+type ToneOption = "professional" | "friendly" | "casual" | "formal";
+
+function ToggleSwitch({ enabled, onChange, label }: { enabled: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!enabled)}
+      className="flex items-center gap-3 w-full py-2"
+    >
+      <div
+        className="relative w-[42px] h-[24px] rounded-full transition-colors shrink-0"
+        style={{ backgroundColor: enabled ? "#3ecf8e" : "#444" }}
+      >
+        <div
+          className="absolute top-[2px] w-[20px] h-[20px] rounded-full bg-white transition-transform"
+          style={{ left: enabled ? "20px" : "2px" }}
+        />
+      </div>
+      <span className="text-[13px] text-[#ededed]">{label}</span>
+    </button>
+  );
+}
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return <label className="text-[12px] text-[#888] block mb-1.5">{children}</label>;
+}
+
+function TextInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <input
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className="w-full h-[38px] px-3 rounded-lg border border-[#333] text-[13px] text-[#ededed] outline-none focus:border-[#3ecf8e] transition-colors"
+      style={{ backgroundColor: "#222" }}
+    />
+  );
+}
+
+function TextArea({ value, onChange, placeholder, rows = 3 }: { value: string; onChange: (v: string) => void; placeholder?: string; rows?: number }) {
+  return (
+    <textarea
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      rows={rows}
+      className="w-full px-3 py-2 rounded-lg border border-[#333] text-[13px] text-[#ededed] outline-none resize-none focus:border-[#3ecf8e] transition-colors"
+      style={{ backgroundColor: "#222" }}
+    />
+  );
+}
+
+function SectionCard({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-[#2e2e2e] p-5" style={{ backgroundColor: "#1e1e1e" }}>
+      <div className="flex items-center gap-2 mb-4">
+        {icon}
+        <h3 className="text-[14px] font-semibold text-[#ededed]">{title}</h3>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+export function BusinessContextPage() {
+  const [businessName, setBusinessName] = useState("");
+  const [description, setDescription] = useState("");
+  const [services, setServices] = useState<ServiceItem[]>([{ name: "", description: "", price: "" }]);
+  const [weekdays, setWeekdays] = useState("9:00 - 18:00");
+  const [weekends, setWeekends] = useState("Cerrado");
+  const [timezone, setTimezone] = useState("America/Mexico_City");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [website, setWebsite] = useState("");
+  const [address, setAddress] = useState("");
+  const [faqs, setFaqs] = useState<FaqItem[]>([{ question: "", answer: "" }]);
+  const [tone, setTone] = useState<ToneOption>("professional");
+  const [language, setLanguage] = useState<"es" | "en">("es");
+  const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
+  const [qualifyLeads, setQualifyLeads] = useState(true);
+  const [createDeals, setCreateDeals] = useState(true);
+  const [customInstructions, setCustomInstructions] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const { data: loadedData, isLoading } = trpc.businessContext.get.useQuery();
+
+  useEffect(() => {
+    if (!loadedData) return;
+    setBusinessName(loadedData.businessName);
+    setDescription(loadedData.description);
+    setServices(
+      loadedData.services.length > 0
+        ? loadedData.services.map((s) => ({ name: s.name, description: s.description, price: s.price ?? "" }))
+        : [{ name: "", description: "", price: "" }]
+    );
+    setWeekdays(loadedData.businessHours.weekdays);
+    setWeekends(loadedData.businessHours.weekends);
+    setTimezone(loadedData.businessHours.timezone);
+    setPhone(loadedData.contactInfo.phone ?? "");
+    setEmail(loadedData.contactInfo.email ?? "");
+    setWebsite(loadedData.contactInfo.website ?? "");
+    setAddress(loadedData.contactInfo.address ?? "");
+    setFaqs(
+      loadedData.faqs.length > 0
+        ? loadedData.faqs.map((f) => ({ question: f.question, answer: f.answer }))
+        : [{ question: "", answer: "" }]
+    );
+    setTone(loadedData.tone);
+    setLanguage(loadedData.language);
+    setAutoReplyEnabled(loadedData.autoReplyEnabled);
+    setQualifyLeads(loadedData.qualifyLeads);
+    setCreateDeals(loadedData.createDeals);
+    setCustomInstructions(loadedData.customInstructions);
+  }, [loadedData]);
+
+  const saveMutation = trpc.businessContext.save.useMutation({
+    onSuccess: () => {
+      setSaving(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    },
+    onError: () => {
+      setSaving(false);
+    },
+  });
+
+  const handleSave = () => {
+    setSaving(true);
+    saveMutation.mutate({
+      businessName,
+      description,
+      services: services.filter((s) => s.name.trim() !== ""),
+      businessHours: { weekdays, weekends, timezone },
+      contactInfo: {
+        phone: phone || undefined,
+        email: email || undefined,
+        website: website || undefined,
+        address: address || undefined,
+      },
+      faqs: faqs.filter((f) => f.question.trim() !== ""),
+      tone,
+      language,
+      autoReplyEnabled,
+      qualifyLeads,
+      createDeals,
+      customInstructions,
+    });
+  };
+
+  const addService = () => setServices([...services, { name: "", description: "", price: "" }]);
+  const removeService = (i: number) => setServices(services.filter((_, idx) => idx !== i));
+  const updateService = (i: number, field: keyof ServiceItem, val: string) => {
+    setServices((prev) =>
+      prev.map((s, idx) => (idx === i ? { name: s.name, description: s.description, price: s.price, [field]: val } : s))
+    );
+  };
+
+  const addFaq = () => setFaqs([...faqs, { question: "", answer: "" }]);
+  const removeFaq = (i: number) => setFaqs(faqs.filter((_, idx) => idx !== i));
+  const updateFaq = (i: number, field: keyof FaqItem, val: string) => {
+    setFaqs((prev) =>
+      prev.map((f, idx) => (idx === i ? { question: f.question, answer: f.answer, [field]: val } : f))
+    );
+  };
+
+  const toneOptions: { value: ToneOption; label: string; desc: string }[] = [
+    { value: "professional", label: "Profesional", desc: "Corporativo y serio" },
+    { value: "friendly", label: "Amigable", desc: "Cercano y calido" },
+    { value: "casual", label: "Casual", desc: "Relajado e informal" },
+    { value: "formal", label: "Formal", desc: "Respetuoso y protocolar" },
+  ];
+
+  if (isLoading) {
+    return (
+      <>
+        <SectionHeader title="Contexto de Negocio" description="Base de conocimiento para respuestas automaticas de IA" />
+        <div className="max-w-2xl space-y-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-32 rounded-lg bg-[#1e1e1e] animate-pulse" />
+          ))}
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <SectionHeader
+        title="Contexto de Negocio"
+        description="Base de conocimiento para respuestas automaticas de IA"
+        action={
+          <button
+            onClick={handleSave}
+            disabled={saving || !businessName.trim()}
+            className="flex items-center gap-1.5 text-[12px] text-black px-4 py-1.5 rounded font-medium disabled:opacity-50 transition-opacity"
+            style={{ backgroundColor: saved ? "#3ecf8e" : "#3ecf8e" }}
+          >
+            {saving ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : saved ? (
+              <CheckCircle size={14} />
+            ) : (
+              <Save size={14} />
+            )}
+            {saving ? "Guardando..." : saved ? "Guardado" : "Guardar"}
+          </button>
+        }
+      />
+
+      <div className="max-w-2xl space-y-5 pb-10">
+        {/* Business Info */}
+        <SectionCard title="Informacion del Negocio" icon={<Bot size={16} className="text-[#3ecf8e]" />}>
+          <div className="space-y-3">
+            <div>
+              <FieldLabel>Nombre del negocio *</FieldLabel>
+              <TextInput value={businessName} onChange={setBusinessName} placeholder="Mi Empresa S.A." />
+            </div>
+            <div>
+              <FieldLabel>Descripcion (2-3 oraciones sobre que hace tu negocio) *</FieldLabel>
+              <TextArea
+                value={description}
+                onChange={setDescription}
+                placeholder="Somos una empresa de tecnologia que ofrece soluciones de software para PYMEs..."
+              />
+            </div>
+          </div>
+        </SectionCard>
+
+        {/* Services */}
+        <SectionCard title="Servicios y Productos" icon={<Sparkles size={16} className="text-[#6366f1]" />}>
+          <div className="space-y-3">
+            {services.map((s, i) => (
+              <div key={i} className="rounded-lg border border-[#2a2a2a] p-3 space-y-2" style={{ backgroundColor: "#252525" }}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-[#666]">Servicio {i + 1}</span>
+                  {services.length > 1 && (
+                    <button onClick={() => removeService(i)} className="text-[#888] hover:text-red-400 transition-colors">
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
+                <TextInput value={s.name} onChange={(v) => updateService(i, "name", v)} placeholder="Nombre del servicio" />
+                <TextInput value={s.description} onChange={(v) => updateService(i, "description", v)} placeholder="Descripcion breve" />
+                <TextInput value={s.price ?? ""} onChange={(v) => updateService(i, "price", v)} placeholder="Precio (opcional, ej: $500 USD/mes)" />
+              </div>
+            ))}
+            <button
+              onClick={addService}
+              className="flex items-center gap-1.5 text-[12px] text-[#3ecf8e] hover:text-[#5ae0a8] transition-colors"
+            >
+              <Plus size={14} /> Agregar servicio
+            </button>
+          </div>
+        </SectionCard>
+
+        {/* Business Hours */}
+        <SectionCard title="Horario de Atencion" icon={<Clock size={16} className="text-[#f59e0b]" />}>
+          <div className="space-y-3">
+            <div>
+              <FieldLabel>Lunes a Viernes</FieldLabel>
+              <TextInput value={weekdays} onChange={setWeekdays} placeholder="9:00 - 18:00" />
+            </div>
+            <div>
+              <FieldLabel>Fines de semana</FieldLabel>
+              <TextInput value={weekends} onChange={setWeekends} placeholder="Cerrado" />
+            </div>
+            <div>
+              <FieldLabel>Zona horaria</FieldLabel>
+              <TextInput value={timezone} onChange={setTimezone} placeholder="America/Mexico_City" />
+            </div>
+          </div>
+        </SectionCard>
+
+        {/* Contact Info */}
+        <SectionCard title="Informacion de Contacto" icon={<Phone size={16} className="text-[#888]" />}>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <FieldLabel>Telefono</FieldLabel>
+              <TextInput value={phone} onChange={setPhone} placeholder="+52 55 1234 5678" />
+            </div>
+            <div>
+              <FieldLabel>Email</FieldLabel>
+              <TextInput value={email} onChange={setEmail} placeholder="contacto@miempresa.com" />
+            </div>
+            <div>
+              <FieldLabel>Sitio web</FieldLabel>
+              <TextInput value={website} onChange={setWebsite} placeholder="https://miempresa.com" />
+            </div>
+            <div>
+              <FieldLabel>Direccion</FieldLabel>
+              <TextInput value={address} onChange={setAddress} placeholder="Ciudad de Mexico, CDMX" />
+            </div>
+          </div>
+        </SectionCard>
+
+        {/* FAQs */}
+        <SectionCard title="Preguntas Frecuentes" icon={<MessageCircle size={16} className="text-[#6366f1]" />}>
+          <div className="space-y-3">
+            {faqs.map((f, i) => (
+              <div key={i} className="rounded-lg border border-[#2a2a2a] p-3 space-y-2" style={{ backgroundColor: "#252525" }}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-[#666]">FAQ {i + 1}</span>
+                  {faqs.length > 1 && (
+                    <button onClick={() => removeFaq(i)} className="text-[#888] hover:text-red-400 transition-colors">
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
+                <TextInput value={f.question} onChange={(v) => updateFaq(i, "question", v)} placeholder="Pregunta frecuente" />
+                <TextArea value={f.answer} onChange={(v) => updateFaq(i, "answer", v)} placeholder="Respuesta" rows={2} />
+              </div>
+            ))}
+            <button
+              onClick={addFaq}
+              className="flex items-center gap-1.5 text-[12px] text-[#3ecf8e] hover:text-[#5ae0a8] transition-colors"
+            >
+              <Plus size={14} /> Agregar pregunta
+            </button>
+          </div>
+        </SectionCard>
+
+        {/* Tone & Language */}
+        <SectionCard title="Tono y Lenguaje" icon={<Languages size={16} className="text-[#3ecf8e]" />}>
+          <div className="space-y-4">
+            <div>
+              <FieldLabel>Tono de comunicacion</FieldLabel>
+              <div className="grid grid-cols-2 gap-2">
+                {toneOptions.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setTone(opt.value)}
+                    className="rounded-lg border p-3 text-left transition-colors"
+                    style={{
+                      backgroundColor: tone === opt.value ? "#2a2a2a" : "#222",
+                      borderColor: tone === opt.value ? "#3ecf8e" : "#333",
+                    }}
+                  >
+                    <p className="text-[13px] font-medium" style={{ color: tone === opt.value ? "#3ecf8e" : "#ededed" }}>
+                      {opt.label}
+                    </p>
+                    <p className="text-[11px] text-[#888]">{opt.desc}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <FieldLabel>Idioma de respuestas</FieldLabel>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setLanguage("es")}
+                  className="px-4 py-2 rounded-lg border text-[13px] transition-colors"
+                  style={{
+                    backgroundColor: language === "es" ? "#2a2a2a" : "#222",
+                    borderColor: language === "es" ? "#3ecf8e" : "#333",
+                    color: language === "es" ? "#3ecf8e" : "#ededed",
+                  }}
+                >
+                  Espanol
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLanguage("en")}
+                  className="px-4 py-2 rounded-lg border text-[13px] transition-colors"
+                  style={{
+                    backgroundColor: language === "en" ? "#2a2a2a" : "#222",
+                    borderColor: language === "en" ? "#3ecf8e" : "#333",
+                    color: language === "en" ? "#3ecf8e" : "#ededed",
+                  }}
+                >
+                  English
+                </button>
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+
+        {/* AI Settings */}
+        <SectionCard title="Configuracion de IA" icon={<Zap size={16} className="text-[#f59e0b]" />}>
+          <div className="space-y-1">
+            <ToggleSwitch
+              enabled={autoReplyEnabled}
+              onChange={setAutoReplyEnabled}
+              label="Respuestas automaticas activadas"
+            />
+            <ToggleSwitch
+              enabled={qualifyLeads}
+              onChange={setQualifyLeads}
+              label="Calificar y puntuar leads automaticamente"
+            />
+            <ToggleSwitch
+              enabled={createDeals}
+              onChange={setCreateDeals}
+              label="Crear deals automaticamente al calificar un lead"
+            />
+          </div>
+          <div className="mt-4">
+            <FieldLabel>Instrucciones personalizadas (opcional)</FieldLabel>
+            <TextArea
+              value={customInstructions}
+              onChange={setCustomInstructions}
+              placeholder="Instrucciones adicionales para la IA, ej: 'Siempre ofrece una demo gratuita', 'Menciona nuestra garantia de 30 dias'..."
+              rows={4}
+            />
+          </div>
+        </SectionCard>
+
+        {/* Bottom save button */}
+        <div className="flex justify-end pt-2">
+          <button
+            onClick={handleSave}
+            disabled={saving || !businessName.trim()}
+            className="flex items-center gap-1.5 text-[13px] text-black px-5 py-2 rounded-lg font-medium disabled:opacity-50 transition-opacity"
+            style={{ backgroundColor: "#3ecf8e" }}
+          >
+            {saving ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : saved ? (
+              <CheckCircle size={14} />
+            ) : (
+              <Save size={14} />
+            )}
+            {saving ? "Guardando..." : saved ? "Guardado" : "Guardar configuracion"}
+          </button>
         </div>
       </div>
     </>
