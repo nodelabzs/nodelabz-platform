@@ -69,6 +69,18 @@ import {
   Trash2,
   Sparkles,
   Loader2,
+  Instagram,
+  Linkedin,
+  Image,
+  Upload,
+  ChevronLeft,
+  ChevronRight,
+  AtSign,
+  ThumbsUp,
+  ThumbsDown,
+  Minus,
+  Save,
+  Radio,
 } from "lucide-react";
 
 const workflowNodeTypes = {
@@ -330,60 +342,565 @@ export function PlantillasWAPage() {
 }
 
 export function BroadcastsPage() {
+  const [showForm, setShowForm] = useState(false);
+  const [message, setMessage] = useState("");
+  const [filterTag, setFilterTag] = useState("");
+  const [filterScore, setFilterScore] = useState<"" | "HOT" | "WARM" | "COLD">("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  const { data: contactsData, isLoading: loadingContacts } = trpc.contacts.list.useQuery({
+    limit: 100,
+    tags: filterTag ? [filterTag] : undefined,
+    scoreLabel: filterScore || undefined,
+  });
+  const contacts = contactsData?.contacts ?? [];
+  const totalContacts = contactsData?.total ?? 0;
+
+  const utils = trpc.useUtils();
+  const broadcastMutation = trpc.whatsapp.broadcast.useMutation({
+    onSuccess: () => {
+      setShowForm(false);
+      setMessage("");
+      setSelectedIds([]);
+      setFilterTag("");
+      setFilterScore("");
+    },
+  });
+
+  const toggleContact = (id: string) => {
+    setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  };
+
+  const selectAll = () => {
+    if (selectedIds.length === contacts.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(contacts.map((c) => c.id));
+    }
+  };
+
   return (
     <>
       <SectionHeader
         title="Broadcasts"
         description="Enviar mensajes masivos por WhatsApp"
-        action={<button className="flex items-center gap-1.5 text-[12px] text-black px-3 py-1.5 rounded font-medium" style={{ backgroundColor: "#25D366" }}><Plus size={14} />Nuevo broadcast</button>}
+        action={
+          <div className="flex items-center gap-3">
+            <Badge text="PROFESIONAL+" color="#a78bfa" />
+            <button
+              onClick={() => setShowForm(!showForm)}
+              className="flex items-center gap-1.5 text-[12px] text-black px-3 py-1.5 rounded font-medium"
+              style={{ backgroundColor: "#25D366" }}
+            >
+              <Plus size={14} />Nuevo broadcast
+            </button>
+          </div>
+        }
       />
+
+      {showForm && (
+        <div className="rounded-lg border border-[#2e2e2e] p-4 mb-4" style={{ backgroundColor: "#1e1e1e" }}>
+          <h3 className="text-[14px] font-medium text-[#ededed] mb-3">Crear Broadcast</h3>
+
+          {/* Message */}
+          <div className="mb-3">
+            <label className="text-[11px] text-[#888] block mb-1">Mensaje</label>
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Escribe tu mensaje de broadcast..."
+              className="w-full rounded border border-[#2e2e2e] bg-[#252525] text-[13px] text-[#ededed] p-2 placeholder-[#555] resize-none focus:outline-none focus:border-[#25D366]"
+              rows={3}
+            />
+          </div>
+
+          {/* Filters */}
+          <div className="flex gap-3 mb-3">
+            <div className="flex-1">
+              <label className="text-[11px] text-[#888] block mb-1">Filtrar por tag</label>
+              <input
+                value={filterTag}
+                onChange={(e) => setFilterTag(e.target.value)}
+                placeholder="ej: newsletter, vip"
+                className="w-full rounded border border-[#2e2e2e] bg-[#252525] text-[13px] text-[#ededed] p-2 placeholder-[#555] focus:outline-none focus:border-[#25D366]"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="text-[11px] text-[#888] block mb-1">Filtrar por score</label>
+              <select
+                value={filterScore}
+                onChange={(e) => setFilterScore(e.target.value as "" | "HOT" | "WARM" | "COLD")}
+                className="w-full rounded border border-[#2e2e2e] bg-[#252525] text-[13px] text-[#ededed] p-2 focus:outline-none focus:border-[#25D366]"
+              >
+                <option value="">Todos</option>
+                <option value="HOT">HOT</option>
+                <option value="WARM">WARM</option>
+                <option value="COLD">COLD</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Contact list */}
+          <div className="mb-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] text-[#888]">
+                {loadingContacts ? "Cargando..." : `${totalContacts} contactos encontrados`}
+              </span>
+              {contacts.length > 0 && (
+                <button onClick={selectAll} className="text-[11px] text-[#25D366] hover:underline">
+                  {selectedIds.length === contacts.length ? "Deseleccionar todos" : "Seleccionar todos"}
+                </button>
+              )}
+            </div>
+            <div className="max-h-[200px] overflow-y-auto rounded border border-[#2e2e2e] bg-[#252525]">
+              {loadingContacts ? (
+                <div className="p-4 text-center"><Loader2 size={16} className="animate-spin mx-auto text-[#888]" /></div>
+              ) : contacts.length === 0 ? (
+                <p className="p-4 text-center text-[12px] text-[#666]">No se encontraron contactos con estos filtros</p>
+              ) : (
+                contacts.map((c) => (
+                  <label key={c.id} className="flex items-center gap-2 px-3 py-2 hover:bg-[#2e2e2e] cursor-pointer border-b border-[#2e2e2e] last:border-0">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(c.id)}
+                      onChange={() => toggleContact(c.id)}
+                      className="accent-[#25D366]"
+                    />
+                    <span className="text-[12px] text-[#ededed] flex-1">
+                      {c.firstName} {c.lastName}
+                    </span>
+                    <span className="text-[11px] text-[#666]">{c.phone ?? "sin tel."}</span>
+                    {c.scoreLabel && (
+                      <Badge
+                        text={c.scoreLabel}
+                        color={c.scoreLabel === "HOT" ? "#ef4444" : c.scoreLabel === "WARM" ? "#f59e0b" : "#6b7280"}
+                      />
+                    )}
+                  </label>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Send */}
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-[#888]">{selectedIds.length} contactos seleccionados</span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowForm(false)}
+                className="text-[12px] text-[#888] px-3 py-1.5 rounded border border-[#2e2e2e] hover:bg-[#252525]"
+              >
+                Cancelar
+              </button>
+              <button
+                disabled={!message.trim() || selectedIds.length === 0 || broadcastMutation.isPending}
+                onClick={() => broadcastMutation.mutate({
+                  contactIds: selectedIds,
+                  templateName: message.trim(),
+                })}
+                className="flex items-center gap-1.5 text-[12px] text-black px-3 py-1.5 rounded font-medium disabled:opacity-40"
+                style={{ backgroundColor: "#25D366" }}
+              >
+                {broadcastMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                Enviar broadcast
+              </button>
+            </div>
+          </div>
+
+          {broadcastMutation.isSuccess && (
+            <div className="mt-3 rounded p-2 text-[12px] text-[#3ecf8e]" style={{ backgroundColor: "#3ecf8e15" }}>
+              <CheckCircle size={14} className="inline mr-1" />
+              Broadcast enviado: {broadcastMutation.data.sent} enviados, {broadcastMutation.data.failed} fallidos, {broadcastMutation.data.skipped} omitidos
+            </div>
+          )}
+
+          {broadcastMutation.isError && (
+            <div className="mt-3 rounded p-2 text-[12px] text-[#ef4444]" style={{ backgroundColor: "#ef444415" }}>
+              <AlertTriangle size={14} className="inline mr-1" />
+              {broadcastMutation.error.message}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Broadcast history empty state */}
       <div className="rounded-lg border border-[#2e2e2e] p-8 text-center" style={{ backgroundColor: "#1e1e1e" }}>
-        <MessageCircle size={32} className="text-[#555] mx-auto mb-2" />
-        <p className="text-[13px] text-[#888]">No hay broadcasts recientes</p>
-        <p className="text-[11px] text-[#666] mt-1">Crea un broadcast para enviar mensajes masivos</p>
+        <Radio size={32} className="text-[#555] mx-auto mb-2" />
+        <p className="text-[13px] text-[#888]">Sin broadcasts anteriores</p>
+        <p className="text-[11px] text-[#666] mt-1">Los broadcasts enviados apareceran aqui</p>
       </div>
     </>
   );
 }
 
 export function RespuestasIAPage() {
+  const { data: rulesData, isLoading } = trpc.whatsapp.getAutoReplyRules.useQuery();
+  const [rules, setRules] = useState<Array<{ id: string; keywords: string[]; response: string; businessHoursOnly: boolean; enabled: boolean }>>([]);
+  const [initialized, setInitialized] = useState(false);
+  const [globalEnabled, setGlobalEnabled] = useState(true);
+
+  // Sync from server once
+  if (rulesData && !initialized) {
+    setRules(rulesData.rules.length > 0 ? rulesData.rules : [
+      { id: crypto.randomUUID(), keywords: ["precio"], response: "Gracias por tu interes! Un asesor te contactara pronto.", businessHoursOnly: false, enabled: true },
+    ]);
+    setGlobalEnabled(rulesData.rules.some((r) => r.enabled));
+    setInitialized(true);
+  }
+
+  const utils = trpc.useUtils();
+  const updateMutation = trpc.whatsapp.updateAutoReplyRules.useMutation({
+    onSuccess: () => utils.whatsapp.getAutoReplyRules.invalidate(),
+  });
+
+  const addRule = () => {
+    setRules((prev) => [...prev, {
+      id: crypto.randomUUID(),
+      keywords: [""],
+      response: "",
+      businessHoursOnly: false,
+      enabled: true,
+    }]);
+  };
+
+  const removeRule = (id: string) => {
+    setRules((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  const updateRule = (id: string, field: string, value: unknown) => {
+    setRules((prev) => prev.map((r) => r.id === id ? { ...r, [field]: value } : r));
+  };
+
+  const toggleGlobal = () => {
+    const next = !globalEnabled;
+    setGlobalEnabled(next);
+    setRules((prev) => prev.map((r) => ({ ...r, enabled: next })));
+  };
+
+  const handleSave = () => {
+    updateMutation.mutate({ rules });
+  };
+
   return (
     <>
-      <SectionHeader title="Respuestas IA" description="Respuestas automaticas inteligentes para WhatsApp" />
-      <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
-        <div className="flex items-center justify-between mb-4">
+      <SectionHeader
+        title="Respuestas IA"
+        description="Respuestas automaticas inteligentes para WhatsApp"
+        action={
+          <div className="flex items-center gap-3">
+            <button onClick={addRule} className="flex items-center gap-1.5 text-[12px] text-[#ededed] px-3 py-1.5 rounded border border-[#2e2e2e] hover:bg-[#252525]">
+              <Plus size={14} />Agregar regla
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={updateMutation.isPending}
+              className="flex items-center gap-1.5 text-[12px] text-black px-3 py-1.5 rounded font-medium disabled:opacity-40"
+              style={{ backgroundColor: "#25D366" }}
+            >
+              {updateMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              Guardar
+            </button>
+          </div>
+        }
+      />
+
+      {/* Global toggle */}
+      <div className="rounded-lg border border-[#2e2e2e] p-4 mb-4" style={{ backgroundColor: "#1e1e1e" }}>
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Bot size={16} className="text-[#f59e0b]" />
-            <span className="text-[13px] font-medium text-[#ededed]">Asistente IA</span>
+            <span className="text-[13px] font-medium text-[#ededed]">Auto-respuestas IA</span>
           </div>
-          <Badge text="Activo" color="#3ecf8e" />
-        </div>
-        <div className="space-y-2 text-[13px] text-[#888]">
-          <p>El asistente IA responde automaticamente a preguntas frecuentes basandose en tu base de conocimiento.</p>
-          <div className="grid grid-cols-2 gap-3 mt-3">
-            <div className="rounded p-3" style={{ backgroundColor: "#252525" }}>
-              <p className="text-[11px] text-[#888]">Mensajes respondidos hoy</p>
-              <p className="text-[18px] font-semibold text-[#ededed]">23</p>
+          <button onClick={toggleGlobal} className="flex items-center gap-2">
+            <span className="text-[11px] text-[#888]">{globalEnabled ? "Activado" : "Desactivado"}</span>
+            <div
+              className="w-9 h-5 rounded-full relative transition-colors"
+              style={{ backgroundColor: globalEnabled ? "#25D366" : "#333" }}
+            >
+              <div
+                className="w-4 h-4 rounded-full bg-white absolute top-0.5 transition-all"
+                style={{ left: globalEnabled ? "18px" : "2px" }}
+              />
             </div>
-            <div className="rounded p-3" style={{ backgroundColor: "#252525" }}>
-              <p className="text-[11px] text-[#888]">Tasa de resolucion</p>
-              <p className="text-[18px] font-semibold text-[#ededed]">78%</p>
-            </div>
-          </div>
+          </button>
         </div>
       </div>
+
+      {isLoading ? (
+        <div className="h-32 rounded-lg bg-[#1e1e1e] animate-pulse" />
+      ) : rules.length === 0 ? (
+        <div className="rounded-lg border border-[#2e2e2e] p-8 text-center" style={{ backgroundColor: "#1e1e1e" }}>
+          <Bot size={32} className="text-[#555] mx-auto mb-2" />
+          <p className="text-[13px] text-[#888]">Sin reglas de auto-respuesta</p>
+          <p className="text-[11px] text-[#666] mt-1">Agrega reglas de keyword-respuesta para automatizar tus respuestas</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {rules.map((rule, idx) => (
+            <div key={rule.id} className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[12px] font-medium text-[#888]">Regla {idx + 1}</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => updateRule(rule.id, "enabled", !rule.enabled)}
+                    className="flex items-center gap-1"
+                  >
+                    <div
+                      className="w-7 h-4 rounded-full relative transition-colors"
+                      style={{ backgroundColor: rule.enabled ? "#25D366" : "#333" }}
+                    >
+                      <div
+                        className="w-3 h-3 rounded-full bg-white absolute top-0.5 transition-all"
+                        style={{ left: rule.enabled ? "14px" : "2px" }}
+                      />
+                    </div>
+                  </button>
+                  <button onClick={() => removeRule(rule.id)} className="text-[#555] hover:text-[#ef4444]">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] text-[#888] block mb-1">Keywords (separadas por coma)</label>
+                  <input
+                    value={rule.keywords.join(", ")}
+                    onChange={(e) => updateRule(rule.id, "keywords", e.target.value.split(",").map((k) => k.trim()).filter(Boolean))}
+                    placeholder="precio, costo, valor"
+                    className="w-full rounded border border-[#2e2e2e] bg-[#252525] text-[13px] text-[#ededed] p-2 placeholder-[#555] focus:outline-none focus:border-[#25D366]"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-[#888] block mb-1">Respuesta automatica</label>
+                  <input
+                    value={rule.response}
+                    onChange={(e) => updateRule(rule.id, "response", e.target.value)}
+                    placeholder="Gracias por tu interes! Un asesor te contactara pronto."
+                    className="w-full rounded border border-[#2e2e2e] bg-[#252525] text-[13px] text-[#ededed] p-2 placeholder-[#555] focus:outline-none focus:border-[#25D366]"
+                  />
+                </div>
+              </div>
+              <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={rule.businessHoursOnly}
+                  onChange={(e) => updateRule(rule.id, "businessHoursOnly", e.target.checked)}
+                  className="accent-[#25D366]"
+                />
+                <span className="text-[11px] text-[#888]">Solo en horario laboral</span>
+              </label>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {updateMutation.isSuccess && (
+        <div className="mt-4 rounded p-2 text-[12px] text-[#3ecf8e]" style={{ backgroundColor: "#3ecf8e15" }}>
+          <CheckCircle size={14} className="inline mr-1" />
+          Reglas guardadas correctamente ({updateMutation.data.rulesCount} reglas)
+        </div>
+      )}
+
+      {updateMutation.isError && (
+        <div className="mt-4 rounded p-2 text-[12px] text-[#ef4444]" style={{ backgroundColor: "#ef444415" }}>
+          <AlertTriangle size={14} className="inline mr-1" />
+          {updateMutation.error.message}
+        </div>
+      )}
     </>
   );
 }
 
 export function SecuenciasWAPage() {
+  const [showForm, setShowForm] = useState(false);
+  const [seqName, setSeqName] = useState("");
+  const [steps, setSteps] = useState<Array<{ delayHours: number; message: string }>>([
+    { delayHours: 0, message: "" },
+  ]);
+
+  const { data: sequences, isLoading } = trpc.sequences.list.useQuery();
+  const utils = trpc.useUtils();
+
+  const createMutation = trpc.sequences.create.useMutation({
+    onSuccess: () => {
+      setShowForm(false);
+      setSeqName("");
+      setSteps([{ delayHours: 0, message: "" }]);
+      utils.sequences.list.invalidate();
+    },
+  });
+
+  const toggleMutation = trpc.sequences.update.useMutation({
+    onSuccess: () => utils.sequences.list.invalidate(),
+  });
+
+  const addStep = () => {
+    setSteps((prev) => [...prev, { delayHours: 24, message: "" }]);
+  };
+
+  const removeStep = (idx: number) => {
+    setSteps((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const updateStep = (idx: number, field: "delayHours" | "message", value: string | number) => {
+    setSteps((prev) => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
+  };
+
+  const handleCreate = () => {
+    createMutation.mutate({
+      name: seqName.trim(),
+      steps: steps.map((s) => ({
+        templateId: crypto.randomUUID(),
+        delayHours: s.delayHours,
+      })),
+    });
+  };
+
   return (
     <>
-      <SectionHeader title="Secuencias WhatsApp" description="Secuencias automatizadas de mensajes" />
-      <div className="rounded-lg border border-[#2e2e2e] p-8 text-center" style={{ backgroundColor: "#1e1e1e" }}>
-        <Workflow size={32} className="text-[#555] mx-auto mb-2" />
-        <p className="text-[13px] text-[#888]">Crea secuencias de mensajes automatizados</p>
-      </div>
+      <SectionHeader
+        title="Secuencias WhatsApp"
+        description="Secuencias automatizadas de mensajes"
+        action={
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="flex items-center gap-1.5 text-[12px] text-black px-3 py-1.5 rounded font-medium"
+            style={{ backgroundColor: "#25D366" }}
+          >
+            <Plus size={14} />Crear secuencia
+          </button>
+        }
+      />
+
+      {/* Create form */}
+      {showForm && (
+        <div className="rounded-lg border border-[#2e2e2e] p-4 mb-4" style={{ backgroundColor: "#1e1e1e" }}>
+          <h3 className="text-[14px] font-medium text-[#ededed] mb-3">Nueva Secuencia</h3>
+
+          <div className="mb-3">
+            <label className="text-[11px] text-[#888] block mb-1">Nombre de la secuencia</label>
+            <input
+              value={seqName}
+              onChange={(e) => setSeqName(e.target.value)}
+              placeholder="ej: Bienvenida nuevos leads"
+              className="w-full rounded border border-[#2e2e2e] bg-[#252525] text-[13px] text-[#ededed] p-2 placeholder-[#555] focus:outline-none focus:border-[#25D366]"
+            />
+          </div>
+
+          <div className="mb-3">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-[11px] text-[#888]">Pasos</label>
+              <button onClick={addStep} className="text-[11px] text-[#25D366] hover:underline flex items-center gap-1">
+                <Plus size={12} />Agregar paso
+              </button>
+            </div>
+            <div className="space-y-2">
+              {steps.map((step, idx) => (
+                <div key={idx} className="flex items-start gap-2 rounded p-3" style={{ backgroundColor: "#252525" }}>
+                  <div className="flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold text-[#25D366] border border-[#25D366] shrink-0 mt-1">
+                    {idx + 1}
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Clock size={12} className="text-[#888]" />
+                      <span className="text-[11px] text-[#888]">Esperar</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={step.delayHours}
+                        onChange={(e) => updateStep(idx, "delayHours", parseInt(e.target.value) || 0)}
+                        className="w-16 rounded border border-[#2e2e2e] bg-[#1e1e1e] text-[12px] text-[#ededed] px-2 py-1 focus:outline-none focus:border-[#25D366]"
+                      />
+                      <span className="text-[11px] text-[#888]">horas</span>
+                    </div>
+                    <textarea
+                      value={step.message}
+                      onChange={(e) => updateStep(idx, "message", e.target.value)}
+                      placeholder="Mensaje del paso..."
+                      rows={2}
+                      className="w-full rounded border border-[#2e2e2e] bg-[#1e1e1e] text-[12px] text-[#ededed] p-2 placeholder-[#555] resize-none focus:outline-none focus:border-[#25D366]"
+                    />
+                  </div>
+                  {steps.length > 1 && (
+                    <button onClick={() => removeStep(idx)} className="text-[#555] hover:text-[#ef4444] mt-1">
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setShowForm(false)}
+              className="text-[12px] text-[#888] px-3 py-1.5 rounded border border-[#2e2e2e] hover:bg-[#252525]"
+            >
+              Cancelar
+            </button>
+            <button
+              disabled={!seqName.trim() || steps.length === 0 || createMutation.isPending}
+              onClick={handleCreate}
+              className="flex items-center gap-1.5 text-[12px] text-black px-3 py-1.5 rounded font-medium disabled:opacity-40"
+              style={{ backgroundColor: "#25D366" }}
+            >
+              {createMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+              Crear secuencia
+            </button>
+          </div>
+
+          {createMutation.isError && (
+            <div className="mt-3 rounded p-2 text-[12px] text-[#ef4444]" style={{ backgroundColor: "#ef444415" }}>
+              <AlertTriangle size={14} className="inline mr-1" />
+              {createMutation.error.message}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Sequences list */}
+      {isLoading ? (
+        <div className="h-32 rounded-lg bg-[#1e1e1e] animate-pulse" />
+      ) : !sequences || sequences.length === 0 ? (
+        <div className="rounded-lg border border-[#2e2e2e] p-8 text-center" style={{ backgroundColor: "#1e1e1e" }}>
+          <Workflow size={32} className="text-[#555] mx-auto mb-2" />
+          <p className="text-[13px] text-[#888]">Sin secuencias de WhatsApp. Crea tu primera secuencia automatizada.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {sequences.map((seq) => {
+            const stepsArr = (seq.steps as Array<Record<string, unknown>>) ?? [];
+            return (
+              <div key={seq.id} className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Workflow size={16} className="text-[#25D366]" />
+                    <div>
+                      <p className="text-[13px] font-medium text-[#ededed]">{seq.name}</p>
+                      <p className="text-[11px] text-[#666]">{stepsArr.length} paso{stepsArr.length !== 1 ? "s" : ""} &middot; {seq._count?.enrollments ?? 0} inscritos</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge
+                      text={seq.isActive ? "Activa" : "Pausada"}
+                      color={seq.isActive ? "#3ecf8e" : "#888"}
+                    />
+                    <button
+                      onClick={() => toggleMutation.mutate({ sequenceId: seq.id, isActive: !seq.isActive })}
+                      disabled={toggleMutation.isPending}
+                      className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-[#2e2e2e] hover:bg-[#252525]"
+                      style={{ color: seq.isActive ? "#ef4444" : "#3ecf8e" }}
+                    >
+                      {seq.isActive ? <Pause size={12} /> : <Play size={12} />}
+                      {seq.isActive ? "Pausar" : "Activar"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </>
   );
 }
@@ -437,36 +954,247 @@ export function ReglasWAPage() {
 // ============================
 
 export function CalendarioSocialPage() {
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+  const dayNames = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
+  const today = new Date();
+
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const startOffset = (firstDay.getDay() + 6) % 7; // Monday-based
+  const daysInMonth = lastDay.getDate();
+
+  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
+  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < startOffset; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
   return (
     <>
-      <SectionHeader title="Calendario Social" description="Planifica y programa publicaciones" />
-      <div className="rounded-lg border border-[#2e2e2e] p-8 text-center" style={{ backgroundColor: "#1e1e1e", height: 400 }}>
-        <Calendar size={32} className="text-[#555] mx-auto mb-2" />
-        <p className="text-[13px] text-[#888]">Calendario de publicaciones</p>
-        <p className="text-[11px] text-[#666] mt-1">Arrastra y programa publicaciones en el calendario</p>
+      <SectionHeader
+        title="Calendario Social"
+        description="Planifica y programa publicaciones"
+        action={
+          <button className="flex items-center gap-1.5 text-[12px] text-black px-4 py-2 rounded font-medium" style={{ backgroundColor: "#3ecf8e" }}>
+            <Plus size={14} /> Crear publicacion
+          </button>
+        }
+      />
+
+      {/* Banner */}
+      <div className="flex items-center gap-3 rounded-lg border border-[#3ecf8e]/20 px-4 py-3 mb-6" style={{ backgroundColor: "#3ecf8e10" }}>
+        <Plug size={16} className="text-[#3ecf8e] shrink-0" />
+        <p className="text-[12px] text-[#aaa]">
+          Conecta tus redes sociales para programar publicaciones.{" "}
+          <span className="text-[#3ecf8e] cursor-pointer hover:underline">Ir a integraciones</span>
+        </p>
+      </div>
+
+      {/* Calendar */}
+      <div className="rounded-lg border border-[#2e2e2e] overflow-hidden" style={{ backgroundColor: "#1e1e1e" }}>
+        {/* Month navigation */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#2e2e2e]">
+          <button onClick={prevMonth} className="p-1.5 rounded hover:bg-[#2a2a2a] text-[#888] transition-colors">
+            <ChevronLeft size={18} />
+          </button>
+          <h2 className="text-[15px] font-semibold text-[#ededed]">{monthNames[month]} {year}</h2>
+          <button onClick={nextMonth} className="p-1.5 rounded hover:bg-[#2a2a2a] text-[#888] transition-colors">
+            <ChevronRight size={18} />
+          </button>
+        </div>
+
+        {/* Day headers */}
+        <div className="grid grid-cols-7 border-b border-[#2e2e2e]">
+          {dayNames.map((d) => (
+            <div key={d} className="text-center py-2.5 text-[11px] font-medium text-[#666] uppercase tracking-wide">
+              {d}
+            </div>
+          ))}
+        </div>
+
+        {/* Day cells */}
+        <div className="grid grid-cols-7">
+          {cells.map((day, i) => {
+            const isToday = day !== null && day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
+            return (
+              <div
+                key={i}
+                className={`min-h-[90px] border-b border-r border-[#2e2e2e] p-2 transition-colors ${day ? "hover:bg-[#252525] cursor-pointer" : ""}`}
+                style={{ borderRight: (i + 1) % 7 === 0 ? "none" : undefined }}
+              >
+                {day && (
+                  <span
+                    className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[12px] ${
+                      isToday ? "bg-[#3ecf8e] text-black font-semibold" : "text-[#999]"
+                    }`}
+                  >
+                    {day}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </>
   );
 }
 
 export function CrearPublicacionPage() {
+  const [content, setContent] = useState("");
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("");
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const maxChars = 2200;
+
+  const platformsList = [
+    { name: "Facebook", icon: Facebook, color: "#1877f2" },
+    { name: "Instagram", icon: Instagram, color: "#e4405f" },
+    { name: "TikTok", icon: Globe, color: "#00f2ea" },
+    { name: "LinkedIn", icon: Linkedin, color: "#0a66c2" },
+  ];
+
+  const togglePlatform = (name: string) =>
+    setSelectedPlatforms((prev) => prev.includes(name) ? prev.filter((p) => p !== name) : [...prev, name]);
+
+  const showToast = () => {
+    setToastMsg("Proximamente — conecta tus redes sociales");
+    setTimeout(() => setToastMsg(null), 3000);
+  };
+
   return (
     <>
       <SectionHeader title="Crear Publicacion" description="Publica en multiples redes sociales" />
-      <div className="max-w-2xl space-y-4">
-        <div>
-          <label className="text-[12px] text-[#888] block mb-1.5">Plataformas</label>
-          <div className="flex gap-2">
-            {["Facebook", "Instagram", "TikTok", "LinkedIn"].map((p) => (
-              <button key={p} className="text-[12px] px-3 py-1.5 rounded border border-[#333] text-[#ccc] hover:border-[#3ecf8e]/40 transition-colors">{p}</button>
-            ))}
+
+      {toastMsg && (
+        <div className="fixed top-6 right-6 z-50 rounded-lg border border-[#3ecf8e]/30 px-4 py-3 text-[13px] text-[#ededed] shadow-lg" style={{ backgroundColor: "#1e1e1e" }}>
+          {toastMsg}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <div className="lg:col-span-3 space-y-5">
+          {/* Platform selector */}
+          <div>
+            <label className="text-[12px] text-[#888] block mb-2">Plataformas</label>
+            <div className="flex gap-2 flex-wrap">
+              {platformsList.map(({ name, icon: Icon, color }) => {
+                const active = selectedPlatforms.includes(name);
+                return (
+                  <button
+                    key={name}
+                    onClick={() => togglePlatform(name)}
+                    className="flex items-center gap-2 text-[12px] px-3 py-2 rounded-lg border transition-all"
+                    style={{
+                      borderColor: active ? color + "80" : "#333",
+                      backgroundColor: active ? color + "15" : "transparent",
+                      color: active ? color : "#999",
+                    }}
+                  >
+                    <Icon size={14} />
+                    {name}
+                    {active && <CheckCircle size={12} />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Content textarea */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-[12px] text-[#888]">Contenido</label>
+              <span className={`text-[11px] ${content.length > maxChars ? "text-red-400" : "text-[#666]"}`}>
+                {content.length}/{maxChars}
+              </span>
+            </div>
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Escribe tu publicacion..."
+              className="w-full h-40 px-4 py-3 rounded-lg border border-[#333] text-[13px] text-[#ededed] placeholder:text-[#555] outline-none resize-none focus:border-[#3ecf8e]/40 transition-colors"
+              style={{ backgroundColor: "#222" }}
+            />
+          </div>
+
+          {/* Image drop zone */}
+          <div>
+            <label className="text-[12px] text-[#888] block mb-2">Multimedia</label>
+            <div className="flex items-center justify-center h-36 rounded-lg border-2 border-dashed border-[#333] hover:border-[#3ecf8e]/30 transition-colors cursor-pointer" style={{ backgroundColor: "#1a1a1a" }}>
+              <div className="text-center">
+                <Upload size={24} className="text-[#555] mx-auto mb-2" />
+                <p className="text-[12px] text-[#777]">Arrastra imagenes o haz clic para subir</p>
+                <p className="text-[10px] text-[#555] mt-1">PNG, JPG, MP4 — max 10MB</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Schedule */}
+          <div>
+            <label className="text-[12px] text-[#888] block mb-2">Programar</label>
+            <div className="flex gap-3">
+              <input
+                type="date"
+                value={scheduleDate}
+                onChange={(e) => setScheduleDate(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-[#333] text-[12px] text-[#ededed] outline-none focus:border-[#3ecf8e]/40 transition-colors"
+                style={{ backgroundColor: "#222" }}
+              />
+              <input
+                type="time"
+                value={scheduleTime}
+                onChange={(e) => setScheduleTime(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-[#333] text-[12px] text-[#ededed] outline-none focus:border-[#3ecf8e]/40 transition-colors"
+                style={{ backgroundColor: "#222" }}
+              />
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex gap-3 pt-2">
+            <button onClick={showToast} className="flex items-center gap-1.5 text-[12px] text-black px-5 py-2.5 rounded-lg font-medium transition-opacity hover:opacity-90" style={{ backgroundColor: "#3ecf8e" }}>
+              <Send size={13} /> Publicar ahora
+            </button>
+            <button onClick={showToast} className="flex items-center gap-1.5 text-[12px] text-[#ccc] px-5 py-2.5 rounded-lg font-medium border border-[#333] hover:border-[#3ecf8e]/40 transition-colors">
+              <Clock size={13} /> Programar
+            </button>
           </div>
         </div>
-        <div>
-          <label className="text-[12px] text-[#888] block mb-1.5">Contenido</label>
-          <textarea placeholder="Escribe tu publicacion..." className="w-full h-32 px-3 py-2 rounded-lg border border-[#333] text-[13px] text-[#ededed] placeholder:text-[#555] outline-none resize-none" style={{ backgroundColor: "#222" }} />
+
+        {/* Preview */}
+        <div className="lg:col-span-2">
+          <label className="text-[12px] text-[#888] block mb-2">Vista previa</label>
+          <div className="rounded-lg border border-[#2e2e2e] overflow-hidden" style={{ backgroundColor: "#1e1e1e" }}>
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-[#2e2e2e]">
+              <div className="w-9 h-9 rounded-full bg-[#3ecf8e]/20 flex items-center justify-center">
+                <Globe size={16} className="text-[#3ecf8e]" />
+              </div>
+              <div>
+                <p className="text-[13px] text-[#ededed] font-medium">Tu Marca</p>
+                <p className="text-[10px] text-[#666]">Ahora</p>
+              </div>
+            </div>
+            <div className="px-4 py-3">
+              <p className="text-[13px] text-[#ccc] min-h-[60px] whitespace-pre-wrap">
+                {content || <span className="text-[#555] italic">Tu publicacion aparecera aqui...</span>}
+              </p>
+            </div>
+            <div className="mx-4 mb-3 h-40 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#252525" }}>
+              <Image size={28} className="text-[#444]" />
+            </div>
+            <div className="flex items-center gap-6 px-4 py-3 border-t border-[#2e2e2e] text-[#666]">
+              <ThumbsUp size={14} />
+              <MessageCircle size={14} />
+              <Share2 size={14} />
+            </div>
+          </div>
         </div>
-        <button className="text-[12px] text-black px-4 py-2 rounded font-medium" style={{ backgroundColor: "#3ecf8e" }}>Publicar</button>
       </div>
     </>
   );
@@ -500,26 +1228,144 @@ export function CanalSocialPage({ canal }: { canal: string }) {
 }
 
 export function BandejaSocialPage() {
+  const [activeTab, setActiveTab] = useState("Todos");
+  const tabs = ["Todos", "Facebook", "Instagram", "LinkedIn"];
+
   return (
     <>
       <SectionHeader title="Bandeja de Entrada" description="Mensajes directos de todas las plataformas" />
-      <div className="rounded-lg border border-[#2e2e2e] p-8 text-center" style={{ backgroundColor: "#1e1e1e" }}>
-        <MessageCircle size={32} className="text-[#555] mx-auto mb-2" />
-        <p className="text-[13px] text-[#888]">Bandeja unificada de DMs</p>
-        <p className="text-[11px] text-[#666] mt-1">Conecta tus redes sociales para ver mensajes</p>
+
+      {/* Tab filters */}
+      <div className="flex gap-1 mb-4 border-b border-[#2e2e2e] pb-px">
+        {tabs.map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className="px-4 py-2 text-[12px] rounded-t-lg transition-colors"
+            style={{
+              color: activeTab === tab ? "#3ecf8e" : "#888",
+              backgroundColor: activeTab === tab ? "#1e1e1e" : "transparent",
+              borderBottom: activeTab === tab ? "2px solid #3ecf8e" : "2px solid transparent",
+            }}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {/* Split view */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-0 rounded-lg border border-[#2e2e2e] overflow-hidden" style={{ backgroundColor: "#1e1e1e", minHeight: 480 }}>
+        {/* Left sidebar — conversation list */}
+        <div className="md:col-span-1 border-r border-[#2e2e2e]">
+          {/* Search */}
+          <div className="p-3 border-b border-[#2e2e2e]">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#333]" style={{ backgroundColor: "#222" }}>
+              <Search size={13} className="text-[#555]" />
+              <input
+                type="text"
+                placeholder="Buscar conversaciones..."
+                className="bg-transparent text-[12px] text-[#ededed] placeholder:text-[#555] outline-none flex-1"
+              />
+            </div>
+          </div>
+
+          {/* Empty conversation list */}
+          <div className="flex flex-col items-center justify-center py-16 px-4">
+            <MessageCircle size={28} className="text-[#444] mb-3" />
+            <p className="text-[12px] text-[#666] text-center">Sin conversaciones</p>
+          </div>
+        </div>
+
+        {/* Right panel — message thread */}
+        <div className="md:col-span-2 flex flex-col items-center justify-center px-6">
+          <div className="w-16 h-16 rounded-full bg-[#252525] flex items-center justify-center mb-4">
+            <Mail size={24} className="text-[#444]" />
+          </div>
+          <p className="text-[14px] text-[#888] font-medium mb-1">Sin mensajes</p>
+          <p className="text-[12px] text-[#666] text-center max-w-xs">
+            Los mensajes de tus redes sociales apareceran aqui.
+          </p>
+          <div className="flex items-center gap-2 mt-5 px-4 py-2.5 rounded-lg border border-[#3ecf8e]/20 cursor-pointer hover:border-[#3ecf8e]/40 transition-colors" style={{ backgroundColor: "#3ecf8e10" }}>
+            <Plug size={14} className="text-[#3ecf8e]" />
+            <span className="text-[12px] text-[#3ecf8e]">Conectar redes sociales</span>
+          </div>
+        </div>
       </div>
     </>
   );
 }
 
 export function MencionesSocialPage() {
+  const [activeTab, setActiveTab] = useState("Todas");
+  const tabs = [
+    { label: "Todas", icon: AtSign },
+    { label: "Positivas", icon: ThumbsUp },
+    { label: "Neutras", icon: Minus },
+    { label: "Negativas", icon: ThumbsDown },
+  ];
+
   return (
     <>
       <SectionHeader title="Menciones" description="Monitoreo de menciones de tu marca" />
-      <div className="rounded-lg border border-[#2e2e2e] p-8 text-center" style={{ backgroundColor: "#1e1e1e" }}>
-        <Hash size={32} className="text-[#555] mx-auto mb-2" />
-        <p className="text-[13px] text-[#888]">Monitor de menciones</p>
-        <p className="text-[11px] text-[#666] mt-1">Configura alertas para cuando mencionen tu marca</p>
+
+      {/* Banner */}
+      <div className="flex items-center gap-3 rounded-lg border border-[#3ecf8e]/20 px-4 py-3 mb-6" style={{ backgroundColor: "#3ecf8e10" }}>
+        <Plug size={16} className="text-[#3ecf8e] shrink-0" />
+        <p className="text-[12px] text-[#aaa]">
+          Conecta tus redes para monitorear menciones.{" "}
+          <span className="text-[#3ecf8e] cursor-pointer hover:underline">Ir a integraciones</span>
+        </p>
+      </div>
+
+      {/* Tab filters */}
+      <div className="flex gap-1 mb-6 border-b border-[#2e2e2e] pb-px">
+        {tabs.map(({ label, icon: Icon }) => (
+          <button
+            key={label}
+            onClick={() => setActiveTab(label)}
+            className="flex items-center gap-1.5 px-4 py-2 text-[12px] rounded-t-lg transition-colors"
+            style={{
+              color: activeTab === label ? "#3ecf8e" : "#888",
+              backgroundColor: activeTab === label ? "#1e1e1e" : "transparent",
+              borderBottom: activeTab === label ? "2px solid #3ecf8e" : "2px solid transparent",
+            }}
+          >
+            <Icon size={12} />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Placeholder mention card — shows what a mention looks like */}
+      <div className="rounded-lg border border-[#2e2e2e] p-4 mb-4 opacity-50" style={{ backgroundColor: "#1e1e1e" }}>
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-[#252525] flex items-center justify-center">
+              <AtSign size={15} className="text-[#555]" />
+            </div>
+            <div>
+              <p className="text-[13px] text-[#999]">@usuario_ejemplo</p>
+              <p className="text-[10px] text-[#666]">hace 2 horas  ·  Instagram</p>
+            </div>
+          </div>
+          <span className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-full bg-[#3ecf8e]/10 text-[#3ecf8e]">
+            <ThumbsUp size={10} /> Positiva
+          </span>
+        </div>
+        <p className="text-[12px] text-[#888] ml-12">
+          &quot;Excelente servicio de <span className="text-[#3ecf8e]">@tumarca</span>, super recomendado! 🚀&quot;
+        </p>
+      </div>
+
+      {/* Empty state */}
+      <div className="rounded-lg border border-[#2e2e2e] p-12 text-center" style={{ backgroundColor: "#1e1e1e" }}>
+        <div className="w-14 h-14 rounded-full bg-[#252525] flex items-center justify-center mx-auto mb-4">
+          <Hash size={24} className="text-[#444]" />
+        </div>
+        <p className="text-[14px] text-[#888] font-medium mb-1">Sin menciones detectadas</p>
+        <p className="text-[12px] text-[#666] max-w-sm mx-auto">
+          Cuando alguien mencione tu marca en redes sociales, las menciones apareceran aqui con analisis de sentimiento.
+        </p>
       </div>
     </>
   );
@@ -1005,33 +1851,366 @@ function WorkflowAIChat({
   );
 }
 
+const WORKFLOW_TRIGGERS_LIST = [
+  { key: "nuevo_contacto", label: "Nuevo contacto", desc: "Se activa cuando se crea un nuevo contacto" },
+  { key: "lead_hot", label: "Lead calificado (HOT)", desc: "Cuando un lead alcanza calificacion HOT" },
+  { key: "deal_creado", label: "Deal creado", desc: "Cuando se crea un nuevo deal" },
+  { key: "deal_etapa_cambiada", label: "Deal etapa cambiada", desc: "Cuando un deal cambia de etapa" },
+  { key: "deal_ganado", label: "Deal ganado", desc: "Cuando un deal se marca como ganado" },
+] as const;
+
+const WORKFLOW_ACTIONS_LIST = [
+  { key: "enviar_email", label: "Enviar email", icon: "mail" },
+  { key: "actualizar_contacto", label: "Actualizar contacto", icon: "users" },
+  { key: "crear_actividad", label: "Crear actividad", icon: "calendar" },
+  { key: "esperar", label: "Esperar X horas", icon: "clock" },
+] as const;
+
+const EMAIL_TEMPLATES_LIST = [
+  "Bienvenida", "Seguimiento lead", "Propuesta enviada", "Recordatorio reunion", "Agradecimiento post-compra",
+];
+
+const CONTACT_FIELDS_LIST = [
+  "Nombre", "Email", "Telefono", "Empresa", "Etapa", "Score", "Etiqueta", "Propietario",
+];
+
+const ACTIVITY_TYPES_LIST = ["Llamada", "Reunion", "Email", "Tarea", "Nota"];
+
+interface WorkflowStepItem {
+  id: string;
+  type: string;
+  config: Record<string, string>;
+}
+
 export function CrearWorkflowPage() {
+  const [workflowName, setWorkflowName] = useState("");
+  const [trigger, setTrigger] = useState("");
+  const [steps, setSteps] = useState<WorkflowStepItem[]>([]);
+  const [isActive, setIsActive] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [wfSaved, setWfSaved] = useState(false);
+
+  const createWorkflow = trpc.workflow.create.useMutation({
+    onSuccess: () => { setSaving(false); setWfSaved(true); },
+    onError: () => { setSaving(false); },
+  });
+
+  function addStep(type: string) {
+    setSteps([...steps, { id: crypto.randomUUID(), type, config: {} }]);
+  }
+
+  function updateStepConfig(id: string, key: string, value: string) {
+    setSteps(steps.map((s) => s.id === id ? { ...s, config: { ...s.config, [key]: value } } : s));
+  }
+
+  function removeStep(id: string) {
+    setSteps(steps.filter((s) => s.id !== id));
+  }
+
+  function handleSave() {
+    if (!workflowName.trim() || !trigger) return;
+    setSaving(true);
+    const wfNodes = steps.map((s, i) => ({ id: s.id, type: s.type, position: i, config: s.config }));
+    const wfEdges = steps.slice(1).map((s, i) => ({ source: steps[i]!.id, target: s.id }));
+    createWorkflow.mutate({
+      name: workflowName,
+      trigger: { type: trigger },
+      nodes: wfNodes,
+      edges: wfEdges,
+      isActive,
+    });
+  }
+
+  if (wfSaved) {
+    return (
+      <>
+        <SectionHeader title="Crear Workflow" description="Crea una nueva automatizacion" />
+        <div className="max-w-2xl">
+          <div className="rounded-lg border border-[#3ecf8e]/30 p-8 text-center" style={{ backgroundColor: "#1e2a22" }}>
+            <CheckCircle size={40} className="text-[#3ecf8e] mx-auto mb-4" />
+            <h2 className="text-[18px] font-semibold text-[#ededed] mb-2">Workflow guardado</h2>
+            <p className="text-[13px] text-[#aaa]">
+              <span className="text-[#ededed] font-medium">{workflowName}</span> ha sido creado {isActive ? "y activado" : ""} exitosamente.
+            </p>
+            <button
+              onClick={() => { setWfSaved(false); setWorkflowName(""); setTrigger(""); setSteps([]); setIsActive(false); }}
+              className="mt-6 text-[12px] px-4 py-2 rounded border border-[#333] text-[#ccc] hover:border-[#3ecf8e]/40 transition-colors"
+            >
+              Crear otro workflow
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <SectionHeader title="Crear Workflow" description="Crea una nueva automatizacion" />
-      <div className="grid grid-cols-3 gap-4">
-        {[
-          { name: "Desde cero", desc: "Crea un workflow personalizado", icon: <Plus size={24} /> },
-          { name: "Lead Nurture", desc: "Seguimiento automatico de leads", icon: <Zap size={24} /> },
-          { name: "Welcome Series", desc: "Serie de bienvenida para nuevos contactos", icon: <Mail size={24} /> },
-        ].map((t) => (
-          <button key={t.name} className="rounded-lg border border-[#2e2e2e] p-6 text-left hover:border-[#3ecf8e]/40 transition-colors" style={{ backgroundColor: "#1e1e1e" }}>
-            <div className="text-[#888] mb-3">{t.icon}</div>
-            <h3 className="text-[14px] font-medium text-[#ededed] mb-1">{t.name}</h3>
-            <p className="text-[12px] text-[#888]">{t.desc}</p>
+      <div className="max-w-2xl space-y-6">
+        {/* Workflow name */}
+        <div>
+          <label className="text-[12px] text-[#888] block mb-1.5">Nombre del workflow</label>
+          <input
+            value={workflowName}
+            onChange={(e) => setWorkflowName(e.target.value)}
+            placeholder="Ej: Seguimiento de leads calientes"
+            className="w-full h-[38px] px-3 rounded-lg border border-[#333] text-[13px] text-[#ededed] placeholder:text-[#555] outline-none focus:border-[#3ecf8e]"
+            style={{ backgroundColor: "#222" }}
+          />
+        </div>
+
+        {/* Trigger selector */}
+        <div>
+          <label className="text-[12px] text-[#888] block mb-2">Trigger (evento que inicia el workflow)</label>
+          <div className="space-y-2">
+            {WORKFLOW_TRIGGERS_LIST.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTrigger(t.key)}
+                className={`w-full rounded-lg border p-3 text-left transition-colors flex items-center gap-3 ${
+                  trigger === t.key ? "border-[#3ecf8e] bg-[#3ecf8e]/5" : "border-[#2e2e2e] hover:border-[#555]"
+                }`}
+                style={{ backgroundColor: trigger === t.key ? undefined : "#1e1e1e" }}
+              >
+                <Zap size={14} className={trigger === t.key ? "text-[#3ecf8e]" : "text-[#666]"} />
+                <div>
+                  <span className={`text-[13px] font-medium ${trigger === t.key ? "text-[#ededed]" : "text-[#ccc]"}`}>{t.label}</span>
+                  <p className="text-[11px] text-[#888]">{t.desc}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Timeline / Steps */}
+        <div>
+          <label className="text-[12px] text-[#888] block mb-2">Acciones</label>
+          <div className="space-y-0">
+            {steps.map((step, idx) => (
+              <div key={step.id}>
+                {/* Connector line */}
+                {idx > 0 && (
+                  <div className="flex justify-center py-1">
+                    <div className="w-px h-6 bg-[#3ecf8e]/40" />
+                  </div>
+                )}
+                {/* Step card */}
+                <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 rounded-full bg-[#3ecf8e]/20 flex items-center justify-center text-[10px] text-[#3ecf8e] font-medium">{idx + 1}</div>
+                      <span className="text-[12px] text-[#ededed] font-medium">
+                        {WORKFLOW_ACTIONS_LIST.find((a) => a.key === step.type)?.label ?? step.type}
+                      </span>
+                    </div>
+                    <button onClick={() => removeStep(step.id)} className="text-[#666] hover:text-[#ef4444] transition-colors">
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+
+                  {/* Config fields per type */}
+                  {step.type === "enviar_email" && (
+                    <div>
+                      <label className="text-[11px] text-[#888] block mb-1">Template de email</label>
+                      <select
+                        value={step.config.template ?? ""}
+                        onChange={(e) => updateStepConfig(step.id, "template", e.target.value)}
+                        className="w-full h-[34px] px-3 rounded border border-[#333] text-[12px] text-[#ededed] outline-none focus:border-[#3ecf8e] appearance-none"
+                        style={{ backgroundColor: "#252525" }}
+                      >
+                        <option value="">Seleccionar template...</option>
+                        {EMAIL_TEMPLATES_LIST.map((t) => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                  )}
+
+                  {step.type === "actualizar_contacto" && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] text-[#888] block mb-1">Campo</label>
+                        <select
+                          value={step.config.field ?? ""}
+                          onChange={(e) => updateStepConfig(step.id, "field", e.target.value)}
+                          className="w-full h-[34px] px-3 rounded border border-[#333] text-[12px] text-[#ededed] outline-none focus:border-[#3ecf8e] appearance-none"
+                          style={{ backgroundColor: "#252525" }}
+                        >
+                          <option value="">Seleccionar campo...</option>
+                          {CONTACT_FIELDS_LIST.map((f) => <option key={f} value={f}>{f}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-[#888] block mb-1">Valor</label>
+                        <input
+                          value={step.config.value ?? ""}
+                          onChange={(e) => updateStepConfig(step.id, "value", e.target.value)}
+                          placeholder="Nuevo valor"
+                          className="w-full h-[34px] px-3 rounded border border-[#333] text-[12px] text-[#ededed] placeholder:text-[#555] outline-none focus:border-[#3ecf8e]"
+                          style={{ backgroundColor: "#252525" }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {step.type === "crear_actividad" && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] text-[#888] block mb-1">Asunto</label>
+                        <input
+                          value={step.config.subject ?? ""}
+                          onChange={(e) => updateStepConfig(step.id, "subject", e.target.value)}
+                          placeholder="Asunto de la actividad"
+                          className="w-full h-[34px] px-3 rounded border border-[#333] text-[12px] text-[#ededed] placeholder:text-[#555] outline-none focus:border-[#3ecf8e]"
+                          style={{ backgroundColor: "#252525" }}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-[#888] block mb-1">Tipo</label>
+                        <select
+                          value={step.config.activityType ?? ""}
+                          onChange={(e) => updateStepConfig(step.id, "activityType", e.target.value)}
+                          className="w-full h-[34px] px-3 rounded border border-[#333] text-[12px] text-[#ededed] outline-none focus:border-[#3ecf8e] appearance-none"
+                          style={{ backgroundColor: "#252525" }}
+                        >
+                          <option value="">Seleccionar tipo...</option>
+                          {ACTIVITY_TYPES_LIST.map((t) => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {step.type === "esperar" && (
+                    <div>
+                      <label className="text-[11px] text-[#888] block mb-1">Horas de espera</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={step.config.hours ?? ""}
+                        onChange={(e) => updateStepConfig(step.id, "hours", e.target.value)}
+                        placeholder="24"
+                        className="w-32 h-[34px] px-3 rounded border border-[#333] text-[12px] text-[#ededed] placeholder:text-[#555] outline-none focus:border-[#3ecf8e]"
+                        style={{ backgroundColor: "#252525" }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {/* Add action buttons */}
+            {steps.length > 0 && (
+              <div className="flex justify-center py-1">
+                <div className="w-px h-6 bg-[#333]" />
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {WORKFLOW_ACTIONS_LIST.map((a) => (
+                <button
+                  key={a.key}
+                  onClick={() => addStep(a.key)}
+                  className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded border border-dashed border-[#444] text-[#888] hover:border-[#3ecf8e]/40 hover:text-[#ccc] transition-colors"
+                >
+                  <Plus size={12} />
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Activar toggle + Save */}
+        <div className="flex items-center justify-between pt-4 border-t border-[#2e2e2e]">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <button
+              onClick={() => setIsActive(!isActive)}
+              className={`w-9 h-5 rounded-full transition-colors relative ${isActive ? "bg-[#3ecf8e]" : "bg-[#444]"}`}
+            >
+              <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-[3px] transition-transform ${isActive ? "translate-x-[18px]" : "translate-x-[3px]"}`} />
+            </button>
+            <span className="text-[12px] text-[#ccc]">{isActive ? "Activo" : "Inactivo"}</span>
+          </label>
+          <button
+            onClick={handleSave}
+            disabled={!workflowName.trim() || !trigger || saving}
+            className="flex items-center gap-1.5 text-[12px] text-black px-4 py-2 rounded font-medium disabled:opacity-50 transition-colors"
+            style={{ backgroundColor: "#3ecf8e" }}
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            {saving ? "Guardando..." : "Guardar workflow"}
           </button>
-        ))}
+        </div>
       </div>
     </>
   );
 }
 
 export function TriggersPage({ type }: { type: string }) {
+  const { data: workflows } = trpc.workflow.list.useQuery();
+
+  const triggerTypes = [
+    { key: "nuevo_contacto", label: "Nuevo contacto", desc: "Se activa cuando se crea un nuevo contacto en el CRM.", icon: <Users size={16} /> },
+    { key: "lead_hot", label: "Lead calificado (HOT)", desc: "Cuando un lead alcanza la calificacion HOT basado en su score.", icon: <Zap size={16} /> },
+    { key: "deal_creado", label: "Deal creado", desc: "Cuando se crea un nuevo deal en el pipeline.", icon: <Plus size={16} /> },
+    { key: "deal_etapa_cambiada", label: "Deal etapa cambiada", desc: "Cuando un deal se mueve a una nueva etapa del pipeline.", icon: <RefreshCw size={16} /> },
+    { key: "deal_ganado", label: "Deal ganado", desc: "Cuando un deal se marca como ganado/cerrado.", icon: <CheckCircle size={16} /> },
+  ];
+
+  function workflowsUsingTrigger(triggerKey: string) {
+    if (!workflows) return [];
+    return workflows.filter((w) => {
+      const t = w.trigger as { type?: string } | null;
+      return t?.type === triggerKey;
+    });
+  }
+
   return (
     <>
-      <SectionHeader title={type} description={`Configurar triggers de ${type.toLowerCase()}`} />
-      <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
-        <p className="text-[13px] text-[#888]">Configura cuando se activan tus automatizaciones basandose en eventos de {type.toLowerCase()}.</p>
+      <SectionHeader
+        title="Triggers"
+        description="Eventos que inician automatizaciones"
+        action={
+          <a href="/dashboard/automatizacion/crear" className="flex items-center gap-1.5 text-[12px] text-black px-3 py-1.5 rounded font-medium" style={{ backgroundColor: "#3ecf8e" }}>
+            <Plus size={14} />
+            Nuevo workflow
+          </a>
+        }
+      />
+      <div className="space-y-3">
+        {triggerTypes.map((t) => {
+          const using = workflowsUsingTrigger(t.key);
+          return (
+            <div key={t.key} className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-[#3ecf8e]/10 flex items-center justify-center text-[#3ecf8e] shrink-0 mt-0.5">
+                  {t.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="text-[13px] font-medium text-[#ededed]">{t.label}</h3>
+                    {using.length > 0 && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: "#3ecf8e20", color: "#3ecf8e" }}>
+                        {using.length} workflow{using.length !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[12px] text-[#888] mb-2">{t.desc}</p>
+                  {using.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {using.map((w) => (
+                        <span key={w.id} className="text-[10px] px-2 py-0.5 rounded bg-[#2a2a2a] text-[#aaa] border border-[#333]">
+                          {w.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {using.length === 0 && (
+                    <p className="text-[11px] text-[#666] italic">Ningun workflow usa este trigger</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </>
   );
@@ -1054,15 +2233,10 @@ export function ErroresAutomationPage() {
   return (
     <>
       <SectionHeader title="Errores" description="Errores recientes en automatizaciones" />
-      <div className="space-y-2">
-        <div className="rounded-lg border border-[#ef4444]/20 p-3 flex items-center gap-3" style={{ backgroundColor: "#1e1e1e" }}>
-          <AlertTriangle size={14} className="text-[#ef4444]" />
-          <div className="flex-1">
-            <p className="text-[13px] text-[#ededed]">Lead HOT Follow-up falllo para Ana Jimenez</p>
-            <p className="text-[11px] text-[#888]">Error: Email bounce — direccion invalida</p>
-          </div>
-          <span className="text-[11px] text-[#666]">Hace 4h</span>
-        </div>
+      <div className="rounded-lg border border-[#3ecf8e]/30 p-12 text-center" style={{ backgroundColor: "#1e2a22" }}>
+        <CheckCircle size={40} className="text-[#3ecf8e] mx-auto mb-4" />
+        <h2 className="text-[16px] font-semibold text-[#ededed] mb-2">Sin errores recientes</h2>
+        <p className="text-[13px] text-[#888]">Tus automatizaciones estan funcionando correctamente.</p>
       </div>
     </>
   );

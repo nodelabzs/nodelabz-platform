@@ -135,15 +135,18 @@ export function DashboardShell({
           isSuperAdmin={isSuperAdmin}
           permissions={permissions}
         />
-        <DetailSidebar
-          activeSection={activeSection}
-          activeItem={activeItem}
-          onItemChange={setActiveItem}
-        />
+        {/* DetailSidebar hidden on small screens */}
+        <div className="hidden md:flex h-full">
+          <DetailSidebar
+            activeSection={activeSection}
+            activeItem={activeItem}
+            onItemChange={setActiveItem}
+          />
+        </div>
 
         {/* Main content area */}
         <div
-          className="flex-1 overflow-auto"
+          className="flex-1 overflow-auto min-w-0"
           style={{ backgroundColor: "#171717" }}
         >
           {workflowDraft ? (
@@ -154,19 +157,22 @@ export function DashboardShell({
               onSave={handleSaveWorkflow}
             />
           ) : (
-            <div className="p-6 h-full overflow-auto">
+            <div className="p-3 sm:p-4 md:p-6 h-full overflow-auto">
               <ContentRouter section={activeSection} activeItem={activeItem} />
             </div>
           )}
         </div>
 
+        {/* AI Chat panel: full overlay on mobile, side panel on desktop */}
         {aiChatOpen && (
-          <AiChatPanel
-            onClose={() => setAiChatOpen(false)}
-            activeSection={activeSection as AiSection}
-            plan={plan}
-            onOpenWorkflowEditor={handleOpenWorkflowEditor}
-          />
+          <div className="fixed inset-0 z-50 md:relative md:inset-auto md:z-auto">
+            <AiChatPanel
+              onClose={() => setAiChatOpen(false)}
+              activeSection={activeSection as AiSection}
+              plan={plan}
+              onOpenWorkflowEditor={handleOpenWorkflowEditor}
+            />
+          </div>
         )}
       </div>
 

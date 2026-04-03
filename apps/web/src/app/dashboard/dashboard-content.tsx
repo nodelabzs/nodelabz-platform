@@ -9,7 +9,7 @@ export function DashboardContent({
 }) {
   return (
     <DashboardShell user={user}>
-      <div className="flex gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         {[...new Array(4)].map((_, i) => (
           <div
             key={"first-array" + i}

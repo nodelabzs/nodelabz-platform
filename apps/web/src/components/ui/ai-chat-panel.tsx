@@ -78,7 +78,7 @@ export function AiChatPanel({
 
   return (
     <div
-      className="w-[380px] h-full border-l border-[#2e2e2e] flex flex-col flex-shrink-0"
+      className="w-full md:w-[380px] h-full border-l border-[#2e2e2e] flex flex-col flex-shrink-0"
       style={{ backgroundColor: "#1c1c1c" }}
     >
       {/* Header */}

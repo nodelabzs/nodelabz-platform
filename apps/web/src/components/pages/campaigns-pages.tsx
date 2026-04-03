@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
-import { Plus, Search, Play, Pause, TrendingUp, BarChart3, Sparkles, Calendar, Image } from "lucide-react";
+import { Plus, Search, Play, Pause, TrendingUp, BarChart3, Sparkles, Calendar, Image, ChevronLeft, ChevronRight, CheckCircle, Loader2 } from "lucide-react";
 
 function SectionHeader({ title, description, action }: { title: string; description?: string; action?: React.ReactNode }) {
   return (
@@ -56,8 +56,8 @@ export function TodasCampanasPage() {
           <p className="text-[12px] text-[#888]">Conecta una plataforma de ads para ver campanas aqui.</p>
         </div>
       ) : (
-        <div className="rounded-lg border border-[#2e2e2e] overflow-hidden">
-          <table className="w-full">
+        <div className="rounded-lg border border-[#2e2e2e] overflow-x-auto">
+          <table className="w-full min-w-[600px]">
             <thead>
               <tr style={{ backgroundColor: "#1e1e1e" }}>
                 {["Campana", "Plataforma", "Gasto", "Conversiones", "Revenue", "ROAS"].map((h) => (
@@ -84,29 +84,348 @@ export function TodasCampanasPage() {
   );
 }
 
+const PLATFORMS = [
+  { key: "meta_ads", label: "Meta Ads", color: "#1877f2" },
+  { key: "google_ads", label: "Google Ads", color: "#fbbc04" },
+  { key: "tiktok", label: "TikTok", color: "#fe2c55" },
+] as const;
+
+const BUDGET_TYPES = ["Diario", "Total"] as const;
+
+const WIZARD_STEPS = ["Plataforma", "Presupuesto", "Anuncio", "Revision"] as const;
+
 export function CrearCampanaPage() {
+  const [step, setStep] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  // Step 1
+  const [name, setName] = useState("");
+  const [platform, setPlatform] = useState("");
+
+  // Step 2
+  const [budgetType, setBudgetType] = useState<"Diario" | "Total">("Diario");
+  const [budget, setBudget] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [audience, setAudience] = useState("");
+
+  // Step 3
+  const [headline, setHeadline] = useState("");
+  const [description, setDescription] = useState("");
+  const [cta, setCta] = useState("Mas informacion");
+  const [generatingCopy, setGeneratingCopy] = useState(false);
+
+  const platformLabel = PLATFORMS.find((p) => p.key === platform)?.label ?? platform;
+
+  const canNext =
+    step === 0 ? name.trim() && platform :
+    step === 1 ? budget && startDate :
+    step === 2 ? headline.trim() && description.trim() :
+    true;
+
+  async function handleGenerateCopy() {
+    if (!name.trim()) return;
+    setGeneratingCopy(true);
+    try {
+      const resp = await fetch("/api/ai/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "ad_copy",
+          context: `Campana: ${name}. Plataforma: ${platformLabel}. Audiencia: ${audience || "general"}.`,
+          tone: "professional",
+          platform: platform === "meta_ads" ? "meta" : platform === "google_ads" ? "google" : "tiktok",
+          language: "es",
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        const content = data.content || "";
+        const lines = content.split("\n").filter((l: string) => l.trim());
+        if (lines.length >= 2) {
+          setHeadline(lines[0].replace(/^#*\s*/, "").slice(0, 80));
+          setDescription(lines.slice(1).join(" ").slice(0, 200));
+        } else {
+          setDescription(content.slice(0, 200));
+        }
+      }
+    } catch {
+      // silent — user can write manually
+    }
+    setGeneratingCopy(false);
+  }
+
+  function handleLaunch() {
+    setSaving(true);
+    // Simulate save delay
+    setTimeout(() => {
+      setSaving(false);
+      setSaved(true);
+    }, 1200);
+  }
+
+  if (saved) {
+    return (
+      <>
+        <SectionHeader title="Crear Campana" description="Configura una nueva campana publicitaria" />
+        <div className="max-w-2xl">
+          <div className="rounded-lg border border-[#3ecf8e]/30 p-8 text-center" style={{ backgroundColor: "#1e2a22" }}>
+            <CheckCircle size={40} className="text-[#3ecf8e] mx-auto mb-4" />
+            <h2 className="text-[18px] font-semibold text-[#ededed] mb-2">Campana guardada</h2>
+            <p className="text-[13px] text-[#aaa] mb-1">
+              <span className="text-[#ededed] font-medium">{name}</span> ha sido creada exitosamente.
+            </p>
+            <p className="text-[12px] text-[#888] mt-3">
+              La sincronizacion con <span className="text-[#ccc] font-medium">{platformLabel}</span> estara disponible pronto.
+            </p>
+            <button
+              onClick={() => { setSaved(false); setStep(0); setName(""); setPlatform(""); setBudget(""); setStartDate(""); setEndDate(""); setAudience(""); setHeadline(""); setDescription(""); setCta("Mas informacion"); }}
+              className="mt-6 text-[12px] px-4 py-2 rounded border border-[#333] text-[#ccc] hover:border-[#3ecf8e]/40 transition-colors"
+            >
+              Crear otra campana
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <SectionHeader title="Crear Campana" description="Configura una nueva campana publicitaria" />
-      <div className="max-w-2xl space-y-4">
-        {[
-          { label: "Nombre de la campana", placeholder: "Ej: Promo Semana Santa 2026" },
-          { label: "Plataforma", placeholder: "Seleccionar plataforma", type: "select" },
-          { label: "Presupuesto diario", placeholder: "$0.00" },
-          { label: "Objetivo", placeholder: "Seleccionar objetivo", type: "select" },
-        ].map((f) => (
-          <div key={f.label}>
-            <label className="text-[12px] text-[#888] block mb-1.5">{f.label}</label>
-            <input
-              placeholder={f.placeholder}
-              className="w-full h-[38px] px-3 rounded-lg border border-[#333] text-[13px] text-[#ededed] placeholder:text-[#555] outline-none focus:border-[#3ecf8e]"
-              style={{ backgroundColor: "#222" }}
-            />
+      <div className="max-w-2xl">
+        {/* Progress bar */}
+        <div className="flex items-center gap-2 mb-8">
+          {WIZARD_STEPS.map((s, i) => (
+            <div key={s} className="flex items-center gap-2 flex-1">
+              <div className="flex items-center gap-2 flex-1">
+                <div
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-medium shrink-0 transition-colors ${
+                    i < step ? "bg-[#3ecf8e] text-black" :
+                    i === step ? "border-2 border-[#3ecf8e] text-[#3ecf8e]" :
+                    "border border-[#444] text-[#666]"
+                  }`}
+                >
+                  {i < step ? <CheckCircle size={14} /> : i + 1}
+                </div>
+                <span className={`text-[11px] hidden sm:block ${i === step ? "text-[#ededed]" : "text-[#666]"}`}>{s}</span>
+              </div>
+              {i < WIZARD_STEPS.length - 1 && (
+                <div className={`h-px flex-1 min-w-4 ${i < step ? "bg-[#3ecf8e]" : "bg-[#333]"}`} />
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Step 1: Platform */}
+        {step === 0 && (
+          <div className="space-y-4">
+            <div>
+              <label className="text-[12px] text-[#888] block mb-1.5">Nombre de la campana</label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ej: Promo Semana Santa 2026"
+                className="w-full h-[38px] px-3 rounded-lg border border-[#333] text-[13px] text-[#ededed] placeholder:text-[#555] outline-none focus:border-[#3ecf8e]"
+                style={{ backgroundColor: "#222" }}
+              />
+            </div>
+            <div>
+              <label className="text-[12px] text-[#888] block mb-1.5">Plataforma</label>
+              <div className="grid grid-cols-3 gap-3">
+                {PLATFORMS.map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => setPlatform(p.key)}
+                    className={`rounded-lg border p-4 text-left transition-colors ${
+                      platform === p.key ? "border-[#3ecf8e]" : "border-[#333] hover:border-[#555]"
+                    }`}
+                    style={{ backgroundColor: platform === p.key ? "#3ecf8e10" : "#1e1e1e" }}
+                  >
+                    <div className="w-3 h-3 rounded-full mb-2" style={{ backgroundColor: p.color }} />
+                    <span className="text-[13px] text-[#ededed] font-medium">{p.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-        ))}
-        <button className="flex items-center gap-1.5 text-[12px] text-black px-4 py-2 rounded font-medium mt-4" style={{ backgroundColor: "#3ecf8e" }}>
-          Crear campana
-        </button>
+        )}
+
+        {/* Step 2: Budget & Audience */}
+        {step === 1 && (
+          <div className="space-y-4">
+            <div>
+              <label className="text-[12px] text-[#888] block mb-1.5">Tipo de presupuesto</label>
+              <div className="flex gap-2">
+                {BUDGET_TYPES.map((bt) => (
+                  <button
+                    key={bt}
+                    onClick={() => setBudgetType(bt)}
+                    className={`text-[12px] px-3 py-1.5 rounded border transition-colors ${
+                      budgetType === bt ? "border-[#3ecf8e] text-[#3ecf8e] bg-[#3ecf8e]/10" : "border-[#333] text-[#ccc] hover:border-[#555]"
+                    }`}
+                  >
+                    {bt}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-[12px] text-[#888] block mb-1.5">Presupuesto {budgetType.toLowerCase()} ($)</label>
+              <input
+                value={budget}
+                onChange={(e) => setBudget(e.target.value.replace(/[^0-9.]/g, ""))}
+                placeholder="0.00"
+                className="w-full h-[38px] px-3 rounded-lg border border-[#333] text-[13px] text-[#ededed] placeholder:text-[#555] outline-none focus:border-[#3ecf8e]"
+                style={{ backgroundColor: "#222" }}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[12px] text-[#888] block mb-1.5">Fecha de inicio</label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="w-full h-[38px] px-3 rounded-lg border border-[#333] text-[13px] text-[#ededed] outline-none focus:border-[#3ecf8e] [color-scheme:dark]"
+                  style={{ backgroundColor: "#222" }}
+                />
+              </div>
+              <div>
+                <label className="text-[12px] text-[#888] block mb-1.5">Fecha de fin (opcional)</label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="w-full h-[38px] px-3 rounded-lg border border-[#333] text-[13px] text-[#ededed] outline-none focus:border-[#3ecf8e] [color-scheme:dark]"
+                  style={{ backgroundColor: "#222" }}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-[12px] text-[#888] block mb-1.5">Audiencia objetivo</label>
+              <textarea
+                value={audience}
+                onChange={(e) => setAudience(e.target.value)}
+                placeholder="Ej: Hombres y mujeres 25-45, interesados en tecnologia, Costa Rica"
+                className="w-full h-20 px-3 py-2 rounded-lg border border-[#333] text-[13px] text-[#ededed] placeholder:text-[#555] outline-none resize-none focus:border-[#3ecf8e]"
+                style={{ backgroundColor: "#222" }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Ad Copy */}
+        {step === 2 && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <label className="text-[12px] text-[#888]">Contenido del anuncio</label>
+              <button
+                onClick={handleGenerateCopy}
+                disabled={generatingCopy}
+                className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded border border-[#6366f1]/40 text-[#6366f1] hover:bg-[#6366f1]/10 transition-colors disabled:opacity-50"
+              >
+                {generatingCopy ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                {generatingCopy ? "Generando..." : "Generar con IA"}
+              </button>
+            </div>
+            <div>
+              <label className="text-[12px] text-[#888] block mb-1.5">Titulo</label>
+              <input
+                value={headline}
+                onChange={(e) => setHeadline(e.target.value)}
+                placeholder="Titulo principal del anuncio"
+                maxLength={80}
+                className="w-full h-[38px] px-3 rounded-lg border border-[#333] text-[13px] text-[#ededed] placeholder:text-[#555] outline-none focus:border-[#3ecf8e]"
+                style={{ backgroundColor: "#222" }}
+              />
+              <span className="text-[10px] text-[#555] mt-1 block text-right">{headline.length}/80</span>
+            </div>
+            <div>
+              <label className="text-[12px] text-[#888] block mb-1.5">Descripcion</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Texto descriptivo del anuncio..."
+                maxLength={200}
+                className="w-full h-24 px-3 py-2 rounded-lg border border-[#333] text-[13px] text-[#ededed] placeholder:text-[#555] outline-none resize-none focus:border-[#3ecf8e]"
+                style={{ backgroundColor: "#222" }}
+              />
+              <span className="text-[10px] text-[#555] mt-1 block text-right">{description.length}/200</span>
+            </div>
+            <div>
+              <label className="text-[12px] text-[#888] block mb-1.5">Call to Action</label>
+              <select
+                value={cta}
+                onChange={(e) => setCta(e.target.value)}
+                className="w-full h-[38px] px-3 rounded-lg border border-[#333] text-[13px] text-[#ededed] outline-none focus:border-[#3ecf8e] appearance-none"
+                style={{ backgroundColor: "#222" }}
+              >
+                {["Mas informacion", "Comprar ahora", "Registrarse", "Contactar", "Descargar", "Ver oferta"].map((o) => (
+                  <option key={o} value={o}>{o}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Step 4: Review */}
+        {step === 3 && (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-[#2e2e2e] divide-y divide-[#2e2e2e] overflow-hidden" style={{ backgroundColor: "#1e1e1e" }}>
+              {[
+                { label: "Campana", value: name },
+                { label: "Plataforma", value: platformLabel },
+                { label: "Presupuesto", value: `$${budget} ${budgetType.toLowerCase()}` },
+                { label: "Inicio", value: startDate },
+                { label: "Fin", value: endDate || "Sin fecha de fin" },
+                { label: "Audiencia", value: audience || "Sin especificar" },
+                { label: "Titulo", value: headline },
+                { label: "Descripcion", value: description },
+                { label: "CTA", value: cta },
+              ].map((row) => (
+                <div key={row.label} className="flex items-start px-4 py-3">
+                  <span className="text-[12px] text-[#888] w-28 shrink-0">{row.label}</span>
+                  <span className="text-[13px] text-[#ededed]">{row.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Navigation */}
+        <div className="flex items-center justify-between mt-8 pt-4 border-t border-[#2e2e2e]">
+          <button
+            onClick={() => setStep(step - 1)}
+            disabled={step === 0}
+            className="flex items-center gap-1.5 text-[12px] px-3 py-2 rounded text-[#ccc] hover:text-[#ededed] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronLeft size={14} />
+            Atras
+          </button>
+          {step < 3 ? (
+            <button
+              onClick={() => setStep(step + 1)}
+              disabled={!canNext}
+              className="flex items-center gap-1.5 text-[12px] text-black px-4 py-2 rounded font-medium disabled:opacity-50 transition-colors"
+              style={{ backgroundColor: "#3ecf8e" }}
+            >
+              Siguiente
+              <ChevronRight size={14} />
+            </button>
+          ) : (
+            <button
+              onClick={handleLaunch}
+              disabled={saving}
+              className="flex items-center gap-1.5 text-[12px] text-black px-4 py-2 rounded font-medium disabled:opacity-50 transition-colors"
+              style={{ backgroundColor: "#3ecf8e" }}
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+              {saving ? "Guardando..." : "Lanzar campana"}
+            </button>
+          )}
+        </div>
       </div>
     </>
   );
@@ -154,12 +473,12 @@ export function PlatformAdsPage({ platform }: { platform: string }) {
     <>
       <SectionHeader title={platform} description={`Rendimiento de ${platform} — ultimos 30 dias`} />
       {isLoading ? (
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
           {[1, 2, 3, 4].map((i) => <div key={i} className="h-20 rounded-lg bg-[#1e1e1e] animate-pulse" />)}
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
             {summaryCards.map((m) => (
               <div key={m.label} className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
                 <p className="text-[11px] text-[#888] mb-1">{m.label}</p>
@@ -268,7 +587,7 @@ export function GeneradorCopyPage() {
         {/* Tone selector */}
         <div>
           <label className="text-[12px] text-[#888] block mb-1.5">Tono</label>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {TONE_OPTIONS.map((t) => (
               <button
                 key={t}
@@ -372,7 +691,7 @@ export function CreativosPage() {
   return (
     <>
       <SectionHeader title="Creativos" description="Biblioteca de imagenes y videos publicitarios" />
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="rounded-lg border border-[#2e2e2e] aspect-square flex items-center justify-center" style={{ backgroundColor: "#1e1e1e" }}>
             <Image size={24} className="text-[#555]" />
