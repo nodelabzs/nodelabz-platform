@@ -82,7 +82,7 @@ function CompaniesShellInner({ userName }: { userName: string }) {
 
   const urlItem = searchParams.get("v") || "companies";
   const [activeItem, setActiveItem] = useState(urlItem);
-  const isPopstateRef = useRef(false);
+  const navSourceRef = useRef<"url" | "click" | "init">("init");
 
   const { data: session } = trpc.auth.getSession.useQuery();
   const tenantName = session?.tenant?.name ?? "Mi Empresa";
@@ -90,20 +90,21 @@ function CompaniesShellInner({ userName }: { userName: string }) {
   // Sync URL → state on back/forward
   useEffect(() => {
     const v = searchParams.get("v") || "companies";
-    isPopstateRef.current = true;
-    setActiveItem(v);
-    requestAnimationFrame(() => { isPopstateRef.current = false; });
-  }, [searchParams]);
+    if (v !== activeItem) {
+      navSourceRef.current = "url";
+      setActiveItem(v);
+    }
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync state → URL on click
   useEffect(() => {
-    if (isPopstateRef.current) return;
-    const currentV = new URLSearchParams(window.location.search).get("v");
-    if (currentV !== activeItem) {
-      const params = new URLSearchParams();
-      params.set("v", activeItem);
-      router.push(`${pathname}?${params.toString()}`, { scroll: false });
+    if (navSourceRef.current === "url" || navSourceRef.current === "init") {
+      navSourceRef.current = "click";
+      return;
     }
+    const params = new URLSearchParams();
+    params.set("v", activeItem);
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
   }, [activeItem, pathname, router]);
 
   return (
@@ -147,7 +148,7 @@ function CompaniesShellInner({ userName }: { userName: string }) {
                   return (
                     <button
                       key={item.id}
-                      onClick={() => setActiveItem(item.id)}
+                      onClick={() => { navSourceRef.current = "click"; setActiveItem(item.id); }}
                       className={`flex items-center gap-2.5 w-full px-4 py-[6px] text-[13px] transition-colors ${
                         isActive
                           ? "text-[#ededed] font-medium"

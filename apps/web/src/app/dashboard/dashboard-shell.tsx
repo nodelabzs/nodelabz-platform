@@ -34,8 +34,8 @@ export function DashboardShell({
   const [activeItem, setActiveItem] = useState<string>(urlItem);
   const [aiChatOpen, setAiChatOpen] = useState(false);
 
-  // Track whether we're handling a popstate (back/forward) to avoid pushing again
-  const isPopstateRef = useRef(false);
+  // Track the source of the last navigation to avoid circular updates
+  const navSourceRef = useRef<"url" | "click" | "init">("init");
 
   const { workflowDraft, setWorkflowDraft, autonomy } = useChatStore();
   const { showWarning, secondsLeft, stayLoggedIn, logout } = useIdleTimeout();
@@ -72,25 +72,25 @@ export function DashboardShell({
   useEffect(() => {
     const s = searchParams.get("s") || "dashboard";
     const i = searchParams.get("i") || getDefaultItem(s);
-    isPopstateRef.current = true;
-    setActiveSection(s);
-    setActiveItem(i);
-    // Reset flag after React processes the state updates
-    requestAnimationFrame(() => { isPopstateRef.current = false; });
-  }, [searchParams]);
+    if (s !== activeSection || i !== activeItem) {
+      navSourceRef.current = "url";
+      setActiveSection(s);
+      setActiveItem(i);
+    }
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync state → URL when activeSection or activeItem changes (user clicks)
   useEffect(() => {
-    if (isPopstateRef.current) return; // Don't push when reacting to URL changes
+    // Skip if this state change came from URL (back/forward) or initial render
+    if (navSourceRef.current === "url" || navSourceRef.current === "init") {
+      navSourceRef.current = "click"; // Reset for next interaction
+      return;
+    }
     const params = new URLSearchParams();
     params.set("s", activeSection);
     params.set("i", activeItem);
     const newUrl = `${pathname}?${params.toString()}`;
-    // Only push if the URL actually changed
-    const currentParams = new URLSearchParams(window.location.search);
-    if (currentParams.get("s") !== activeSection || currentParams.get("i") !== activeItem) {
-      router.push(newUrl, { scroll: false });
-    }
+    router.push(newUrl, { scroll: false });
   }, [activeSection, activeItem, pathname, router]);
 
   // Listen for programmatic navigation from page components
@@ -98,6 +98,7 @@ export function DashboardShell({
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as { section: string; item?: string };
       if (detail?.section) {
+        navSourceRef.current = "click";
         setActiveSection(detail.section);
         setActiveItem(detail.item ?? getDefaultItem(detail.section));
       }
@@ -108,6 +109,7 @@ export function DashboardShell({
 
   // When section changes, reset active item to default
   const handleSectionChange = useCallback((section: string) => {
+    navSourceRef.current = "click";
     setActiveSection(section);
     setActiveItem(getDefaultItem(section));
   }, []);
@@ -175,7 +177,7 @@ export function DashboardShell({
           <DetailSidebar
             activeSection={activeSection}
             activeItem={activeItem}
-            onItemChange={setActiveItem}
+            onItemChange={(item: string) => { navSourceRef.current = "click"; setActiveItem(item); }}
           />
         </div>
 
