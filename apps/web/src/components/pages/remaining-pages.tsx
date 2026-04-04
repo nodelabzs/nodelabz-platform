@@ -1051,6 +1051,24 @@ export function CrearPublicacionPage() {
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("");
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  // AI Image Generation state
+  const [showImageGen, setShowImageGen] = useState(false);
+  const [imagePrompt, setImagePrompt] = useState("");
+  const [imageSize, setImageSize] = useState<"1024x1024" | "1024x1536" | "1536x1024">("1024x1024");
+  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+  const [generatedRevisedPrompt, setGeneratedRevisedPrompt] = useState<string | null>(null);
+
+  const generateImageMutation = trpc.mediaGen.generateImage.useMutation({
+    onSuccess: (data) => {
+      setGeneratedImageUrl(data.url);
+      setGeneratedRevisedPrompt(data.revisedPrompt);
+    },
+    onError: (error) => {
+      setToastMsg(error.message);
+      setTimeout(() => setToastMsg(null), 4000);
+    },
+  });
   const maxChars = 2200;
 
   const platformsList = [
@@ -1123,16 +1141,136 @@ export function CrearPublicacionPage() {
             />
           </div>
 
-          {/* Image drop zone */}
+          {/* Multimedia: upload or AI generate */}
           <div>
             <label className="text-[12px] text-[#888] block mb-2">Multimedia</label>
-            <div className="flex items-center justify-center h-36 rounded-lg border-2 border-dashed border-[#333] hover:border-[#3ecf8e]/30 transition-colors cursor-pointer" style={{ backgroundColor: "#1a1a1a" }}>
-              <div className="text-center">
-                <Upload size={24} className="text-[#555] mx-auto mb-2" />
-                <p className="text-[12px] text-[#777]">Arrastra imagenes o haz clic para subir</p>
-                <p className="text-[10px] text-[#555] mt-1">PNG, JPG, MP4 — max 10MB</p>
+
+            {/* Show generated image if we have one */}
+            {generatedImageUrl ? (
+              <div className="space-y-3">
+                <div className="relative rounded-lg overflow-hidden border border-[#2e2e2e]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={generatedImageUrl}
+                    alt="Imagen generada con IA"
+                    className="w-full max-h-[400px] object-contain"
+                    style={{ backgroundColor: "#1a1a1a" }}
+                  />
+                </div>
+                {generatedRevisedPrompt && generatedRevisedPrompt !== imagePrompt && (
+                  <p className="text-[11px] text-[#666] italic">Prompt revisado: {generatedRevisedPrompt}</p>
+                )}
+                <div className="flex gap-2">
+                  <a
+                    href={generatedImageUrl}
+                    download={`nodelabz-ai-${Date.now()}.png`}
+                    className="flex items-center gap-1.5 text-[11px] text-[#ccc] px-3 py-1.5 rounded-lg border border-[#333] hover:border-[#3ecf8e]/40 transition-colors"
+                  >
+                    <Download size={12} /> Descargar
+                  </a>
+                  <button
+                    onClick={() => {
+                      setGeneratedImageUrl(null);
+                      setGeneratedRevisedPrompt(null);
+                      setShowImageGen(false);
+                    }}
+                    className="flex items-center gap-1.5 text-[11px] text-[#999] px-3 py-1.5 rounded-lg border border-[#333] hover:border-red-400/40 transition-colors"
+                  >
+                    <Trash2 size={12} /> Quitar
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : !showImageGen ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-center h-36 rounded-lg border-2 border-dashed border-[#333] hover:border-[#3ecf8e]/30 transition-colors cursor-pointer" style={{ backgroundColor: "#1a1a1a" }}>
+                  <div className="text-center">
+                    <Upload size={24} className="text-[#555] mx-auto mb-2" />
+                    <p className="text-[12px] text-[#777]">Arrastra imagenes o haz clic para subir</p>
+                    <p className="text-[10px] text-[#555] mt-1">PNG, JPG, MP4 — max 10MB</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowImageGen(true)}
+                  className="flex items-center gap-1.5 text-[12px] text-[#3ecf8e] px-3 py-2 rounded-lg border border-[#3ecf8e]/30 hover:bg-[#3ecf8e]/10 transition-colors w-full justify-center"
+                >
+                  <Sparkles size={14} /> Generar imagen con IA
+                </button>
+              </div>
+            ) : (
+              /* AI Image Generation Panel */
+              <div className="rounded-lg border border-[#3ecf8e]/20 p-4 space-y-3" style={{ backgroundColor: "#1a1a1a" }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-[13px] text-[#3ecf8e] font-medium">
+                    <Sparkles size={14} /> Generar imagen con IA
+                  </div>
+                  <button
+                    onClick={() => setShowImageGen(false)}
+                    className="text-[11px] text-[#666] hover:text-[#999] transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+
+                {/* Prompt */}
+                <textarea
+                  value={imagePrompt}
+                  onChange={(e) => setImagePrompt(e.target.value)}
+                  placeholder="Describe la imagen que quieres generar... Ej: Un producto de skincare minimalista sobre fondo rosa pastel"
+                  className="w-full h-24 px-3 py-2 rounded-lg border border-[#333] text-[12px] text-[#ededed] placeholder:text-[#555] outline-none resize-none focus:border-[#3ecf8e]/40 transition-colors"
+                  style={{ backgroundColor: "#222" }}
+                />
+
+                {/* Size selector */}
+                <div>
+                  <label className="text-[11px] text-[#888] block mb-1.5">Tamano</label>
+                  <div className="flex gap-2">
+                    {([
+                      { value: "1024x1024" as const, label: "Cuadrado", icon: "1:1" },
+                      { value: "1024x1536" as const, label: "Vertical", icon: "2:3" },
+                      { value: "1536x1024" as const, label: "Horizontal", icon: "3:2" },
+                    ]).map(({ value, label, icon }) => (
+                      <button
+                        key={value}
+                        onClick={() => setImageSize(value)}
+                        className="flex-1 text-center px-2 py-1.5 rounded-lg border text-[11px] transition-all"
+                        style={{
+                          borderColor: imageSize === value ? "#3ecf8e80" : "#333",
+                          backgroundColor: imageSize === value ? "#3ecf8e15" : "transparent",
+                          color: imageSize === value ? "#3ecf8e" : "#999",
+                        }}
+                      >
+                        <span className="block font-medium">{icon}</span>
+                        <span className="block text-[10px] mt-0.5 opacity-70">{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Generate button */}
+                <button
+                  onClick={() => {
+                    if (!imagePrompt.trim()) return;
+                    generateImageMutation.mutate({
+                      prompt: imagePrompt.trim(),
+                      size: imageSize,
+                    });
+                  }}
+                  disabled={generateImageMutation.isPending || !imagePrompt.trim()}
+                  className="flex items-center gap-1.5 text-[12px] text-black px-4 py-2.5 rounded-lg font-medium transition-opacity hover:opacity-90 w-full justify-center disabled:opacity-50"
+                  style={{ backgroundColor: "#3ecf8e" }}
+                >
+                  {generateImageMutation.isPending ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" /> Generando...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={14} /> Generar imagen
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Schedule */}
@@ -1185,8 +1323,13 @@ export function CrearPublicacionPage() {
                 {content || <span className="text-[#555] italic">Tu publicacion aparecera aqui...</span>}
               </p>
             </div>
-            <div className="mx-4 mb-3 h-40 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#252525" }}>
-              <Image size={28} className="text-[#444]" />
+            <div className="mx-4 mb-3 h-40 rounded-lg flex items-center justify-center overflow-hidden" style={{ backgroundColor: "#252525" }}>
+              {generatedImageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={generatedImageUrl} alt="Preview" className="w-full h-full object-cover" />
+              ) : (
+                <Image size={28} className="text-[#444]" />
+              )}
             </div>
             <div className="flex items-center gap-6 px-4 py-3 border-t border-[#2e2e2e] text-[#666]">
               <ThumbsUp size={14} />

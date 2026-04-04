@@ -9,6 +9,43 @@ import {
   type PlanName,
 } from "@/server/stripe/plans";
 
+/**
+ * Count AI generation usage for the current billing month.
+ */
+async function getAiUsage(tenantId: string) {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const [imageCount, videoCount, replyCount] = await Promise.all([
+    prisma.aiMemory.count({
+      where: {
+        tenantId,
+        category: "ai_image_gen",
+        createdAt: { gte: monthStart },
+      },
+    }),
+    prisma.aiMemory.count({
+      where: {
+        tenantId,
+        category: "ai_video_gen",
+        createdAt: { gte: monthStart },
+      },
+    }),
+    prisma.message.count({
+      where: {
+        tenantId,
+        createdAt: { gte: monthStart },
+        metadata: {
+          path: ["aiGenerated"],
+          equals: true,
+        },
+      },
+    }),
+  ]);
+
+  return { imageCount, videoCount, replyCount };
+}
+
 export const billingRouter = router({
   /**
    * Get current subscription status for the tenant.
@@ -176,12 +213,18 @@ export const billingRouter = router({
     const plan = tenant.plan as PlanName;
     const limits = PLAN_LIMITS[plan] ?? PLAN_LIMITS.INICIO;
 
-    const contactCount = await prisma.contact.count({
-      where: { tenantId: ctx.effectiveTenantId },
-    });
+    const [contactCount, aiUsage] = await Promise.all([
+      prisma.contact.count({
+        where: { tenantId: ctx.effectiveTenantId },
+      }),
+      getAiUsage(ctx.effectiveTenantId),
+    ]);
 
     const contactsUnlimited = limits.maxContacts === -1;
     const emailsUnlimited = limits.maxEmails === -1;
+    const aiImagesUnlimited = limits.aiImages === -1;
+    const aiVideosUnlimited = (limits.aiVideos as number) === -1;
+    const aiRepliesUnlimited = limits.aiReplies === -1;
 
     return {
       contacts: {
@@ -198,12 +241,39 @@ export const billingRouter = router({
         remaining: emailsUnlimited ? -1 : limits.maxEmails,
         unlimited: emailsUnlimited,
       },
+      aiImages: {
+        used: aiUsage.imageCount,
+        limit: limits.aiImages,
+        remaining: aiImagesUnlimited
+          ? -1
+          : Math.max(0, limits.aiImages - aiUsage.imageCount),
+        unlimited: aiImagesUnlimited,
+      },
+      aiVideos: {
+        used: aiUsage.videoCount,
+        limit: limits.aiVideos,
+        remaining: aiVideosUnlimited
+          ? -1
+          : Math.max(0, limits.aiVideos - aiUsage.videoCount),
+        unlimited: aiVideosUnlimited,
+      },
+      aiReplies: {
+        used: aiUsage.replyCount,
+        limit: limits.aiReplies,
+        remaining: aiRepliesUnlimited
+          ? -1
+          : Math.max(0, limits.aiReplies - aiUsage.replyCount),
+        unlimited: aiRepliesUnlimited,
+      },
       plan,
       features: {
         aiTier: limits.aiTier,
         mediaGeneration: limits.mediaGeneration,
         canSaveWorkflows: limits.canSaveWorkflows,
         requiresApproval: limits.requiresApproval,
+        brandEditing: limits.brandEditing,
+        resolution4k: limits.resolution4k,
+        imageQuality: limits.imageQuality,
       },
     };
   }),

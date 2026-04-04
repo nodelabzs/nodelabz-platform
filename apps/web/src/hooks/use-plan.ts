@@ -13,6 +13,10 @@ const FEATURE_REQUIREMENTS: Record<string, PlanName> = {
   api_keys: "CRECIMIENTO",
   media_generation: "PROFESIONAL",
   broadcasts: "PROFESIONAL",
+  ai_images: "INICIO",
+  ai_videos: "CRECIMIENTO",
+  brand_editing: "PROFESIONAL",
+  resolution_4k: "AGENCIA",
 };
 
 /**

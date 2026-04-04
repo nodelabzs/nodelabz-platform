@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
-import { Plus, Search, Play, Pause, TrendingUp, BarChart3, Sparkles, Calendar, Image, ChevronLeft, ChevronRight, CheckCircle, Loader2 } from "lucide-react";
+import { useEffect, useRef, useCallback } from "react";
+import { Plus, Search, Play, Pause, TrendingUp, BarChart3, Sparkles, Calendar, Image, ChevronLeft, ChevronRight, CheckCircle, Loader2, Video, Download, Upload, Film, Clock, AlertCircle } from "lucide-react";
 
 function SectionHeader({ title, description, action }: { title: string; description?: string; action?: React.ReactNode }) {
   return (
@@ -688,9 +689,370 @@ export function GeneradorCopyPage() {
 }
 
 export function CreativosPage() {
+  // ---- Video generation state ----
+  const [showVideoGen, setShowVideoGen] = useState(false);
+  const [videoPrompt, setVideoPrompt] = useState("");
+  const [videoType, setVideoType] = useState<"text-to-video" | "image-to-video">("text-to-video");
+  const [videoDuration, setVideoDuration] = useState<5 | 10 | 15>(5);
+  const [imageUrl, setImageUrl] = useState("");
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [videoResult, setVideoResult] = useState<{
+    status: string;
+    videoUrl?: string;
+    thumbnailUrl?: string;
+    error?: string;
+  } | null>(null);
+  const [genError, setGenError] = useState<string | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ---- tRPC hooks ----
+  const { data: usage } = trpc.billing.getUsage.useQuery();
+  const generateVideoMutation = trpc.mediaGen.generateVideo.useMutation({
+    onSuccess: (data) => {
+      setActiveJobId(data.jobId);
+      setVideoResult({ status: "pending" });
+      setGenError(null);
+    },
+    onError: (err) => {
+      setGenError(err.message);
+    },
+  });
+
+  const utils = trpc.useUtils();
+
+  // ---- Poll for video status ----
+  const pollStatus = useCallback(async () => {
+    if (!activeJobId) return;
+    try {
+      const status = await utils.mediaGen.checkVideoStatus.fetch({
+        jobId: activeJobId,
+      });
+      setVideoResult(status);
+      if (status.status === "completed" || status.status === "failed") {
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+      }
+    } catch {
+      // Keep polling on transient errors
+    }
+  }, [activeJobId, utils.mediaGen.checkVideoStatus]);
+
+  useEffect(() => {
+    if (activeJobId && videoResult?.status !== "completed" && videoResult?.status !== "failed") {
+      pollIntervalRef.current = setInterval(pollStatus, 5000);
+      // Initial poll
+      pollStatus();
+      return () => {
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+      };
+    }
+  }, [activeJobId, videoResult?.status, pollStatus]);
+
+  const handleSubmitVideo = () => {
+    setGenError(null);
+    setVideoResult(null);
+    setActiveJobId(null);
+    generateVideoMutation.mutate({
+      prompt: videoPrompt,
+      type: videoType,
+      imageUrl: videoType === "image-to-video" ? imageUrl : undefined,
+      duration: videoDuration,
+    });
+  };
+
+  const resetVideoGen = () => {
+    setActiveJobId(null);
+    setVideoResult(null);
+    setVideoPrompt("");
+    setImageUrl("");
+    setGenError(null);
+  };
+
+  const isGenerating =
+    generateVideoMutation.isPending ||
+    (videoResult?.status === "pending") ||
+    (videoResult?.status === "processing");
+
+  const videoLimit = usage?.aiVideos;
+  const planName = usage?.plan ?? "INICIO";
+
   return (
     <>
-      <SectionHeader title="Creativos" description="Biblioteca de imagenes y videos publicitarios" />
+      <SectionHeader
+        title="Creativos"
+        description="Biblioteca de imagenes y videos publicitarios"
+        action={
+          <button
+            onClick={() => setShowVideoGen(!showVideoGen)}
+            className="flex items-center gap-2 text-[12px] px-4 py-2 rounded-lg font-medium transition-all"
+            style={{
+              backgroundColor: showVideoGen ? "#333" : "#3ecf8e",
+              color: showVideoGen ? "#ededed" : "#000",
+            }}
+          >
+            <Video size={14} />
+            {showVideoGen ? "Cerrar" : "Generar video con IA"}
+          </button>
+        }
+      />
+
+      {/* ---- Video Generation Panel ---- */}
+      {showVideoGen && (
+        <div
+          className="rounded-lg border border-[#2e2e2e] p-6 mb-6"
+          style={{ backgroundColor: "#1e1e1e" }}
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <Film size={18} className="text-[#3ecf8e]" />
+              <h3 className="text-[14px] font-medium text-[#ededed]">
+                Generar video con IA
+              </h3>
+            </div>
+            {/* Plan badge */}
+            {videoLimit && (
+              <span
+                className="text-[10px] px-2 py-1 rounded-full font-medium"
+                style={{
+                  backgroundColor:
+                    videoLimit.remaining === 0 && !videoLimit.unlimited
+                      ? "#ef444420"
+                      : "#3ecf8e20",
+                  color:
+                    videoLimit.remaining === 0 && !videoLimit.unlimited
+                      ? "#ef4444"
+                      : "#3ecf8e",
+                }}
+              >
+                {videoLimit.unlimited
+                  ? `${planName} — Videos ilimitados`
+                  : `${planName} — ${videoLimit.used}/${videoLimit.limit} videos`}
+              </span>
+            )}
+          </div>
+
+          {/* Type selector */}
+          <div className="mb-4">
+            <label className="text-[12px] text-[#888] block mb-2">Tipo de generacion</label>
+            <div className="flex gap-2">
+              {(
+                [
+                  { value: "text-to-video", label: "Desde texto" },
+                  { value: "image-to-video", label: "Desde imagen" },
+                ] as const
+              ).map(({ value, label }) => (
+                <button
+                  key={value}
+                  onClick={() => setVideoType(value)}
+                  className="text-[12px] px-4 py-2 rounded-lg border transition-all"
+                  style={{
+                    borderColor: videoType === value ? "#3ecf8e80" : "#333",
+                    backgroundColor: videoType === value ? "#3ecf8e15" : "transparent",
+                    color: videoType === value ? "#3ecf8e" : "#999",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Prompt */}
+          <div className="mb-4">
+            <label className="text-[12px] text-[#888] block mb-2">Prompt</label>
+            <textarea
+              value={videoPrompt}
+              onChange={(e) => setVideoPrompt(e.target.value)}
+              placeholder={
+                videoType === "text-to-video"
+                  ? "Describe el video que quieres generar..."
+                  : "Describe como quieres animar la imagen..."
+              }
+              className="w-full h-24 px-4 py-3 rounded-lg border border-[#333] text-[13px] text-[#ededed] placeholder:text-[#555] outline-none resize-none focus:border-[#3ecf8e]/40 transition-colors"
+              style={{ backgroundColor: "#222" }}
+              maxLength={1000}
+            />
+            <span className="text-[10px] text-[#555] mt-1 block text-right">
+              {videoPrompt.length}/1000
+            </span>
+          </div>
+
+          {/* Image URL input (for image-to-video) */}
+          {videoType === "image-to-video" && (
+            <div className="mb-4">
+              <label className="text-[12px] text-[#888] block mb-2">
+                URL de imagen
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  placeholder="https://ejemplo.com/imagen.jpg"
+                  className="flex-1 px-4 py-2 rounded-lg border border-[#333] text-[13px] text-[#ededed] placeholder:text-[#555] outline-none focus:border-[#3ecf8e]/40 transition-colors"
+                  style={{ backgroundColor: "#222" }}
+                />
+                <div
+                  className="flex items-center justify-center w-10 h-10 rounded-lg border border-dashed border-[#333] cursor-pointer hover:border-[#3ecf8e]/30 transition-colors"
+                  style={{ backgroundColor: "#1a1a1a" }}
+                  title="Subir imagen (proximamente)"
+                >
+                  <Upload size={14} className="text-[#555]" />
+                </div>
+              </div>
+              {imageUrl && (
+                <div className="mt-2 rounded-lg overflow-hidden border border-[#2e2e2e] w-32 h-20">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={imageUrl}
+                    alt="Preview"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = "none";
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Duration selector */}
+          <div className="mb-5">
+            <label className="text-[12px] text-[#888] block mb-2">
+              <Clock size={12} className="inline mr-1" />
+              Duracion
+            </label>
+            <div className="flex gap-2">
+              {([5, 10, 15] as const).map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setVideoDuration(d)}
+                  className="text-[12px] px-4 py-2 rounded-lg border transition-all"
+                  style={{
+                    borderColor: videoDuration === d ? "#3ecf8e80" : "#333",
+                    backgroundColor: videoDuration === d ? "#3ecf8e15" : "transparent",
+                    color: videoDuration === d ? "#3ecf8e" : "#999",
+                  }}
+                >
+                  {d}s
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Error message */}
+          {genError && (
+            <div className="flex items-center gap-2 text-[12px] text-red-400 mb-4 p-3 rounded-lg border border-red-400/20" style={{ backgroundColor: "#ef444410" }}>
+              <AlertCircle size={14} />
+              {genError}
+            </div>
+          )}
+
+          {/* Submit / Progress / Result */}
+          {!activeJobId && !videoResult && (
+            <button
+              onClick={handleSubmitVideo}
+              disabled={
+                !videoPrompt.trim() ||
+                generateVideoMutation.isPending ||
+                (videoType === "image-to-video" && !imageUrl.trim())
+              }
+              className="flex items-center gap-2 text-[13px] px-5 py-2.5 rounded-lg font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ backgroundColor: "#3ecf8e", color: "#000" }}
+            >
+              {generateVideoMutation.isPending ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Enviando...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={14} />
+                  Generar video
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Progress indicator */}
+          {isGenerating && activeJobId && (
+            <div className="flex items-center gap-3 p-4 rounded-lg border border-[#3ecf8e]/20" style={{ backgroundColor: "#3ecf8e08" }}>
+              <Loader2 size={18} className="animate-spin text-[#3ecf8e]" />
+              <div>
+                <p className="text-[13px] text-[#ededed]">
+                  {videoResult?.status === "processing"
+                    ? "Procesando video..."
+                    : "Video en cola de generacion..."}
+                </p>
+                <p className="text-[11px] text-[#888] mt-0.5">
+                  Esto puede tomar entre 30 segundos y 2 minutos
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Completed result */}
+          {videoResult?.status === "completed" && videoResult.videoUrl && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-[12px] text-[#3ecf8e]">
+                <CheckCircle size={14} />
+                Video generado exitosamente
+              </div>
+              <div className="rounded-lg overflow-hidden border border-[#2e2e2e]">
+                <video
+                  src={videoResult.videoUrl}
+                  controls
+                  className="w-full max-h-[400px]"
+                  poster={videoResult.thumbnailUrl}
+                />
+              </div>
+              <div className="flex gap-2">
+                <a
+                  href={videoResult.videoUrl}
+                  download
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-[12px] px-4 py-2 rounded-lg font-medium transition-all"
+                  style={{ backgroundColor: "#3ecf8e", color: "#000" }}
+                >
+                  <Download size={14} />
+                  Descargar
+                </a>
+                <button
+                  onClick={resetVideoGen}
+                  className="flex items-center gap-2 text-[12px] px-4 py-2 rounded-lg border border-[#333] text-[#999] hover:text-[#ededed] transition-colors"
+                >
+                  <Video size={14} />
+                  Generar otro
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Failed result */}
+          {videoResult?.status === "failed" && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-[12px] text-red-400 p-3 rounded-lg border border-red-400/20" style={{ backgroundColor: "#ef444410" }}>
+                <AlertCircle size={14} />
+                Error al generar el video{videoResult.error ? `: ${videoResult.error}` : ""}
+              </div>
+              <button
+                onClick={resetVideoGen}
+                className="flex items-center gap-2 text-[12px] px-4 py-2 rounded-lg border border-[#333] text-[#999] hover:text-[#ededed] transition-colors"
+              >
+                Intentar de nuevo
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ---- Existing Creativos grid ---- */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="rounded-lg border border-[#2e2e2e] aspect-square flex items-center justify-center" style={{ backgroundColor: "#1e1e1e" }}>

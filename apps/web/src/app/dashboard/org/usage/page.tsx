@@ -87,6 +87,28 @@ export default function UsagePage() {
         />
       </div>
 
+      <h3 className="text-[15px] font-medium text-[#ededed] mb-4">AI Generation</h3>
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        <UsageCard
+          label="AI Images"
+          used={usage.aiImages.used}
+          limit={usage.aiImages.limit}
+          unlimited={usage.aiImages.unlimited}
+        />
+        <UsageCard
+          label="AI Videos"
+          used={usage.aiVideos.used}
+          limit={usage.aiVideos.limit}
+          unlimited={usage.aiVideos.unlimited}
+        />
+        <UsageCard
+          label="AI Replies"
+          used={usage.aiReplies.used}
+          limit={usage.aiReplies.limit}
+          unlimited={usage.aiReplies.unlimited}
+        />
+      </div>
+
       {/* Plan Limits */}
       <div className="rounded-lg border border-[#2e2e2e] p-6" style={{ backgroundColor: "#1c1c1c" }}>
         <h3 className="text-[15px] font-medium text-[#ededed] mb-4">Plan Limits & Features</h3>
@@ -124,6 +146,22 @@ export default function UsagePage() {
             <span className="text-[13px] text-[#ededed]">
               {usage.features.requiresApproval ? "Yes" : "No"}
             </span>
+          </div>
+          <div className="flex items-center justify-between py-2 border-b border-[#2e2e2e]">
+            <span className="text-[13px] text-[#999]">Brand Editing</span>
+            <span className={`text-[13px] ${usage.features.brandEditing ? "text-[#3ecf8e]" : "text-[#666]"}`}>
+              {usage.features.brandEditing ? "Enabled" : "Disabled"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between py-2 border-b border-[#2e2e2e]">
+            <span className="text-[13px] text-[#999]">4K Resolution</span>
+            <span className={`text-[13px] ${usage.features.resolution4k ? "text-[#3ecf8e]" : "text-[#666]"}`}>
+              {usage.features.resolution4k ? "Enabled" : "Disabled"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between py-2 border-b border-[#2e2e2e]">
+            <span className="text-[13px] text-[#999]">Image Quality</span>
+            <span className="text-[13px] text-[#ededed] capitalize">{usage.features.imageQuality}</span>
           </div>
         </div>
       </div>

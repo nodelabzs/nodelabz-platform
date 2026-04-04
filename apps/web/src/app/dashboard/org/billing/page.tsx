@@ -4,12 +4,12 @@ import { trpc } from "@/lib/trpc";
 
 const PLAN_DETAILS: Record<
   string,
-  { name: string; price: string; contacts: string; emails: string; ai: string }
+  { name: string; price: string; contacts: string; emails: string; ai: string; images: string; videos: string }
 > = {
-  INICIO: { name: "Inicio", price: "$39/mes", contacts: "500", emails: "5,000", ai: "Haiku" },
-  CRECIMIENTO: { name: "Crecimiento", price: "$99/mes", contacts: "5,000", emails: "25,000", ai: "Sonnet" },
-  PROFESIONAL: { name: "Profesional", price: "$249/mes", contacts: "25,000", emails: "100,000", ai: "Opus" },
-  AGENCIA: { name: "Agencia", price: "$499/mes", contacts: "Unlimited", emails: "Unlimited", ai: "Opus" },
+  INICIO: { name: "Inicio", price: "$39/mes", contacts: "500", emails: "5,000", ai: "Haiku", images: "10", videos: "0" },
+  CRECIMIENTO: { name: "Crecimiento", price: "$99/mes", contacts: "5,000", emails: "25,000", ai: "Sonnet", images: "100", videos: "5" },
+  PROFESIONAL: { name: "Profesional", price: "$249/mes", contacts: "25,000", emails: "100,000", ai: "Opus", images: "500", videos: "20" },
+  AGENCIA: { name: "Agencia", price: "$499/mes", contacts: "Unlimited", emails: "Unlimited", ai: "Opus", images: "Unlimited", videos: "50" },
 };
 
 function UsageBar({ used, limit, unlimited }: { used: number; limit: number; unlimited: boolean }) {
@@ -162,6 +162,42 @@ export default function BillingPage() {
               </div>
               <UsageBar used={usage.emails.used} limit={usage.emails.limit} unlimited={usage.emails.unlimited} />
             </div>
+            <div>
+              <div className="flex items-baseline justify-between">
+                <p className="text-[12px] text-[#999]">AI Images</p>
+                <p className="text-[13px] text-[#ededed]">
+                  {formatNumber(usage.aiImages.used)}{" "}
+                  <span className="text-[#666]">
+                    / {usage.aiImages.unlimited ? "Unlimited" : formatNumber(usage.aiImages.limit)}
+                  </span>
+                </p>
+              </div>
+              <UsageBar used={usage.aiImages.used} limit={usage.aiImages.limit} unlimited={usage.aiImages.unlimited} />
+            </div>
+            <div>
+              <div className="flex items-baseline justify-between">
+                <p className="text-[12px] text-[#999]">AI Videos</p>
+                <p className="text-[13px] text-[#ededed]">
+                  {formatNumber(usage.aiVideos.used)}{" "}
+                  <span className="text-[#666]">
+                    / {usage.aiVideos.unlimited ? "Unlimited" : formatNumber(usage.aiVideos.limit)}
+                  </span>
+                </p>
+              </div>
+              <UsageBar used={usage.aiVideos.used} limit={usage.aiVideos.limit} unlimited={usage.aiVideos.unlimited} />
+            </div>
+            <div>
+              <div className="flex items-baseline justify-between">
+                <p className="text-[12px] text-[#999]">AI Replies</p>
+                <p className="text-[13px] text-[#ededed]">
+                  {formatNumber(usage.aiReplies.used)}{" "}
+                  <span className="text-[#666]">
+                    / {usage.aiReplies.unlimited ? "Unlimited" : formatNumber(usage.aiReplies.limit)}
+                  </span>
+                </p>
+              </div>
+              <UsageBar used={usage.aiReplies.used} limit={usage.aiReplies.limit} unlimited={usage.aiReplies.unlimited} />
+            </div>
           </div>
         </div>
       )}
@@ -192,6 +228,8 @@ export default function BillingPage() {
                   <p>{info.contacts} contacts</p>
                   <p>{info.emails} emails/mo</p>
                   <p>AI: {info.ai}</p>
+                  <p>{info.images} images/mo</p>
+                  <p>{info.videos} videos/mo</p>
                 </div>
                 {!isCurrent && (
                   <button
