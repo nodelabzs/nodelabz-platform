@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
 import { TopNavbar } from "@/components/ui/top-navbar";
 import { trpc } from "@/lib/trpc";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   AllCompaniesPage,
   PlatformMetricsPage,
@@ -74,10 +75,36 @@ const contentMap: Record<string, React.ReactNode> = {
   "feature-flags": <div className="text-[#888] text-sm">Feature Flags - Proximamente</div>,
 };
 
-export function CompaniesShell({ userName }: { userName: string }) {
-  const [activeItem, setActiveItem] = useState("companies");
+function CompaniesShellInner({ userName }: { userName: string }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const urlItem = searchParams.get("v") || "companies";
+  const [activeItem, setActiveItem] = useState(urlItem);
+  const isPopstateRef = useRef(false);
+
   const { data: session } = trpc.auth.getSession.useQuery();
   const tenantName = session?.tenant?.name ?? "Mi Empresa";
+
+  // Sync URL → state on back/forward
+  useEffect(() => {
+    const v = searchParams.get("v") || "companies";
+    isPopstateRef.current = true;
+    setActiveItem(v);
+    requestAnimationFrame(() => { isPopstateRef.current = false; });
+  }, [searchParams]);
+
+  // Sync state → URL on click
+  useEffect(() => {
+    if (isPopstateRef.current) return;
+    const currentV = new URLSearchParams(window.location.search).get("v");
+    if (currentV !== activeItem) {
+      const params = new URLSearchParams();
+      params.set("v", activeItem);
+      router.push(`${pathname}?${params.toString()}`, { scroll: false });
+    }
+  }, [activeItem, pathname, router]);
 
   return (
     <div className="flex flex-col w-full h-screen overflow-hidden" style={{ backgroundColor: "#171717" }}>
@@ -144,5 +171,18 @@ export function CompaniesShell({ userName }: { userName: string }) {
         </div>
       </div>
     </div>
+  );
+}
+
+export function CompaniesShell({ userName }: { userName: string }) {
+  return (
+    <Suspense fallback={
+      <div className="flex w-full h-screen" style={{ backgroundColor: "#171717" }}>
+        <div className="w-[220px] h-full border-r border-[#2e2e2e]" style={{ backgroundColor: '#1c1c1c' }} />
+        <div className="flex-1 p-8" />
+      </div>
+    }>
+      <CompaniesShellInner userName={userName} />
+    </Suspense>
   );
 }

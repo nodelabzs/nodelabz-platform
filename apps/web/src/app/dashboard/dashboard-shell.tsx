@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { IconNavigation, DetailSidebar } from "@/components/ui/sidebar-component";
 import { TopNavbar } from "@/components/ui/top-navbar";
 import { AiChatPanel } from "@/components/ui/ai-chat-panel";
@@ -9,7 +9,7 @@ import { ContentRouter, getDefaultItem } from "@/components/pages/content-router
 import { SuperAdminBanner } from "@/components/ui/super-admin-banner";
 import { useChatStore } from "@/stores/chat-store";
 import { trpc } from "@/lib/trpc";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { useIdleTimeout } from "@/hooks/use-idle-timeout";
 import type { AiSection, ChatArtifact, PlanName, WorkflowArtifact, Permissions } from "@nodelabz/shared-types";
 
@@ -22,11 +22,21 @@ export function DashboardShell({
   user: { email?: string; user_metadata?: { name?: string; full_name?: string } };
   plan?: PlanName;
 }) {
-  const [activeSection, setActiveSection] = useState<string>("dashboard");
-  const [activeItem, setActiveItem] = useState<string>(getDefaultItem("dashboard"));
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Read initial state from URL search params, fallback to defaults
+  const urlSection = searchParams.get("s") || "dashboard";
+  const urlItem = searchParams.get("i") || getDefaultItem(urlSection);
+
+  const [activeSection, setActiveSection] = useState<string>(urlSection);
+  const [activeItem, setActiveItem] = useState<string>(urlItem);
   const [aiChatOpen, setAiChatOpen] = useState(false);
 
-  const pathname = usePathname();
+  // Track whether we're handling a popstate (back/forward) to avoid pushing again
+  const isPopstateRef = useRef(false);
+
   const { workflowDraft, setWorkflowDraft, autonomy } = useChatStore();
   const { showWarning, secondsLeft, stayLoggedIn, logout } = useIdleTimeout();
 
@@ -57,6 +67,31 @@ export function DashboardShell({
     user.user_metadata?.name ||
     user.email?.split("@")[0] ||
     "Usuario";
+
+  // Sync URL → state when search params change (back/forward navigation)
+  useEffect(() => {
+    const s = searchParams.get("s") || "dashboard";
+    const i = searchParams.get("i") || getDefaultItem(s);
+    isPopstateRef.current = true;
+    setActiveSection(s);
+    setActiveItem(i);
+    // Reset flag after React processes the state updates
+    requestAnimationFrame(() => { isPopstateRef.current = false; });
+  }, [searchParams]);
+
+  // Sync state → URL when activeSection or activeItem changes (user clicks)
+  useEffect(() => {
+    if (isPopstateRef.current) return; // Don't push when reacting to URL changes
+    const params = new URLSearchParams();
+    params.set("s", activeSection);
+    params.set("i", activeItem);
+    const newUrl = `${pathname}?${params.toString()}`;
+    // Only push if the URL actually changed
+    const currentParams = new URLSearchParams(window.location.search);
+    if (currentParams.get("s") !== activeSection || currentParams.get("i") !== activeItem) {
+      router.push(newUrl, { scroll: false });
+    }
+  }, [activeSection, activeItem, pathname, router]);
 
   // Listen for programmatic navigation from page components
   useEffect(() => {
