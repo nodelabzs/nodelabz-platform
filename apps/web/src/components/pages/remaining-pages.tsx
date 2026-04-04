@@ -3905,21 +3905,257 @@ export function NotificacionesPage() {
 }
 
 export function ApiKeysPage() {
+  const [showCreate, setShowCreate] = useState(false);
+  const [keyName, setKeyName] = useState("");
+  const [selectedScopes, setSelectedScopes] = useState<string[]>([]);
+  const [newKey, setNewKey] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const utils = trpc.useUtils();
+  const keysQuery = trpc.apiKeys.list.useQuery();
+  const scopesQuery = trpc.apiKeys.availableScopes.useQuery();
+  const createMutation = trpc.apiKeys.create.useMutation({
+    onSuccess: (data) => {
+      setNewKey(data.key);
+      setKeyName("");
+      setSelectedScopes([]);
+      utils.apiKeys.list.invalidate();
+    },
+  });
+  const revokeMutation = trpc.apiKeys.revoke.useMutation({
+    onSuccess: () => {
+      utils.apiKeys.list.invalidate();
+    },
+  });
+
+  const handleCreate = () => {
+    if (!keyName.trim() || selectedScopes.length === 0) return;
+    createMutation.mutate({ name: keyName.trim(), permissions: selectedScopes });
+  };
+
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const toggleScope = (scope: string) => {
+    setSelectedScopes((prev) =>
+      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope],
+    );
+  };
+
   return (
     <>
-      <SectionHeader title="API Keys" description="Claves de acceso a la API de NodeLabz" />
-      <div className="max-w-lg">
-        <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
+      <SectionHeader
+        title="API Keys"
+        description="Claves de acceso a la API publica de NodeLabz"
+        action={
+          !showCreate && !newKey ? (
+            <button
+              onClick={() => setShowCreate(true)}
+              className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg text-white"
+              style={{ backgroundColor: "#3ecf8e" }}
+            >
+              <Plus size={13} /> Crear API Key
+            </button>
+          ) : undefined
+        }
+      />
+
+      {/* New Key Display (shown ONCE after creation) */}
+      {newKey && (
+        <div className="max-w-2xl mb-6 rounded-lg border border-[#f59e0b]/40 p-5" style={{ backgroundColor: "#1e1e1e" }}>
           <div className="flex items-center gap-2 mb-3">
-            <Key size={14} className="text-[#f59e0b]" />
-            <span className="text-[13px] font-medium text-[#ededed]">API Key de produccion</span>
+            <AlertTriangle size={16} className="text-[#f59e0b]" />
+            <span className="text-[13px] font-semibold text-[#f59e0b]">
+              Guarda esta clave ahora. No podras verla de nuevo.
+            </span>
           </div>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 text-[12px] text-[#888] px-3 py-2 rounded font-mono" style={{ backgroundColor: "#252525" }}>
-              nlz_live_••••••••••••••••
+          <div className="flex items-center gap-2 mb-3">
+            <code
+              className="flex-1 text-[12px] text-[#3ecf8e] px-3 py-2.5 rounded font-mono select-all break-all"
+              style={{ backgroundColor: "#252525" }}
+            >
+              {newKey}
             </code>
-            <button className="text-[11px] px-3 py-1.5 rounded border border-[#333] text-[#ccc]">Copiar</button>
+            <button
+              onClick={() => handleCopy(newKey)}
+              className="text-[11px] px-3 py-1.5 rounded border border-[#333] text-[#ccc] hover:border-[#3ecf8e] transition-colors shrink-0"
+            >
+              {copied ? "Copiado" : "Copiar"}
+            </button>
           </div>
+          <button
+            onClick={() => setNewKey(null)}
+            className="text-[11px] text-[#888] hover:text-[#ededed] transition-colors"
+          >
+            Entendido, ya la guarde
+          </button>
+        </div>
+      )}
+
+      {/* Create Form */}
+      {showCreate && !newKey && (
+        <div className="max-w-2xl mb-6 rounded-lg border border-[#2e2e2e] p-5" style={{ backgroundColor: "#1e1e1e" }}>
+          <h3 className="text-[14px] font-semibold text-[#ededed] mb-4">Nueva API Key</h3>
+
+          <div className="mb-4">
+            <label className="text-[12px] text-[#888] block mb-1.5">Nombre</label>
+            <input
+              value={keyName}
+              onChange={(e) => setKeyName(e.target.value)}
+              placeholder="Ej: Integracion Zapier, MCP Server..."
+              className="w-full h-[38px] px-3 rounded-lg border border-[#333] text-[13px] text-[#ededed] outline-none focus:border-[#3ecf8e] transition-colors"
+              style={{ backgroundColor: "#222" }}
+            />
+          </div>
+
+          <div className="mb-4">
+            <label className="text-[12px] text-[#888] block mb-2">Permisos</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(scopesQuery.data || []).map((scope) => (
+                <button
+                  key={scope.id}
+                  type="button"
+                  onClick={() => toggleScope(scope.id)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg border text-[12px] transition-colors text-left"
+                  style={{
+                    backgroundColor: selectedScopes.includes(scope.id) ? "#3ecf8e20" : "#222",
+                    borderColor: selectedScopes.includes(scope.id) ? "#3ecf8e" : "#333",
+                    color: selectedScopes.includes(scope.id) ? "#3ecf8e" : "#888",
+                  }}
+                >
+                  <CheckCircle
+                    size={14}
+                    style={{ opacity: selectedScopes.includes(scope.id) ? 1 : 0.3 }}
+                  />
+                  {scope.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCreate}
+              disabled={!keyName.trim() || selectedScopes.length === 0 || createMutation.isPending}
+              className="text-[12px] px-4 py-2 rounded-lg text-white disabled:opacity-40 transition-opacity"
+              style={{ backgroundColor: "#3ecf8e" }}
+            >
+              {createMutation.isPending ? "Generando..." : "Generar API Key"}
+            </button>
+            <button
+              onClick={() => {
+                setShowCreate(false);
+                setKeyName("");
+                setSelectedScopes([]);
+              }}
+              className="text-[12px] px-4 py-2 rounded-lg border border-[#333] text-[#888] hover:text-[#ededed] transition-colors"
+            >
+              Cancelar
+            </button>
+          </div>
+
+          {createMutation.error && (
+            <p className="mt-3 text-[12px] text-red-400">{createMutation.error.message}</p>
+          )}
+        </div>
+      )}
+
+      {/* Existing Keys List */}
+      <div className="max-w-2xl space-y-3">
+        {keysQuery.isLoading && (
+          <div className="text-[13px] text-[#888] py-8 text-center">
+            <Loader2 size={16} className="animate-spin inline mr-2" />
+            Cargando API keys...
+          </div>
+        )}
+
+        {keysQuery.data?.length === 0 && !keysQuery.isLoading && (
+          <div className="text-[13px] text-[#888] py-8 text-center rounded-lg border border-[#2e2e2e]" style={{ backgroundColor: "#1e1e1e" }}>
+            No hay API keys creadas. Crea una para empezar a usar la API publica.
+          </div>
+        )}
+
+        {(keysQuery.data || []).map((apiKey) => (
+          <div
+            key={apiKey.id}
+            className="rounded-lg border border-[#2e2e2e] p-4"
+            style={{ backgroundColor: "#1e1e1e" }}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-2">
+                  <Key size={14} className="text-[#f59e0b] shrink-0" />
+                  <span className="text-[13px] font-medium text-[#ededed]">{apiKey.name}</span>
+                </div>
+
+                <code
+                  className="text-[12px] text-[#888] px-2 py-1 rounded font-mono inline-block mb-2"
+                  style={{ backgroundColor: "#252525" }}
+                >
+                  {apiKey.maskedKey}
+                </code>
+
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {apiKey.permissions.map((perm) => (
+                    <span
+                      key={perm}
+                      className="text-[10px] px-2 py-0.5 rounded-full border border-[#333] text-[#888]"
+                    >
+                      {perm === "*" ? "todos" : perm}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-3 text-[11px] text-[#666]">
+                  <span>
+                    Creada: {new Date(apiKey.createdAt).toLocaleDateString("es")}
+                  </span>
+                  {apiKey.lastUsedAt && (
+                    <span className="flex items-center gap-1">
+                      <Clock size={10} />
+                      Ultimo uso: {new Date(apiKey.lastUsedAt).toLocaleDateString("es")}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  if (confirm("Revocar esta API key? Las integraciones que la usen dejaran de funcionar.")) {
+                    revokeMutation.mutate({ id: apiKey.id });
+                  }
+                }}
+                disabled={revokeMutation.isPending}
+                className="text-[11px] px-3 py-1.5 rounded border border-red-800/50 text-red-400 hover:border-red-500 hover:text-red-300 transition-colors shrink-0"
+              >
+                <Trash2 size={12} className="inline mr-1" />
+                Revocar
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* API Documentation Hint */}
+      <div className="max-w-2xl mt-6 rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1a1a1a" }}>
+        <div className="flex items-center gap-2 mb-2">
+          <ShieldCheck size={14} className="text-[#3ecf8e]" />
+          <span className="text-[13px] font-medium text-[#ededed]">Uso de la API</span>
+        </div>
+        <div className="text-[12px] text-[#888] space-y-1.5">
+          <p>Base URL: <code className="text-[#ccc] bg-[#252525] px-1.5 py-0.5 rounded">/api/v1</code></p>
+          <p>Autenticacion: <code className="text-[#ccc] bg-[#252525] px-1.5 py-0.5 rounded">Authorization: Bearer nlab_sk_xxxx</code></p>
+          <p className="pt-1">Endpoints disponibles:</p>
+          <ul className="list-disc list-inside ml-2 space-y-0.5 text-[#666]">
+            <li><code className="text-[#888]">GET/POST /api/v1/contacts</code> — Contactos</li>
+            <li><code className="text-[#888]">GET/POST /api/v1/deals</code> — Negocios</li>
+            <li><code className="text-[#888]">POST /api/v1/ai/generate-image</code> — Generar imagenes</li>
+            <li><code className="text-[#888]">POST /api/v1/ai/generate-copy</code> — Generar copy</li>
+            <li><code className="text-[#888]">GET/POST /api/v1/health-score</code> — Health Score</li>
+          </ul>
         </div>
       </div>
     </>
