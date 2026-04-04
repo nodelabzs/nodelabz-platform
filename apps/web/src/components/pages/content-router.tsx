@@ -80,6 +80,13 @@ import {
 
 import { FormBuilderPage } from "./form-builder-page";
 
+import {
+  AIImagePage,
+  AIVideoPage,
+  BrandEditorPage,
+  AIChatPage,
+} from "./ai-studio-pages";
+
 const CONTENT_MAP: Record<string, Record<string, React.ReactNode>> = {
   dashboard: {
     "Home": <HomePage />,
@@ -141,6 +148,13 @@ const CONTENT_MAP: Record<string, Record<string, React.ReactNode>> = {
     "Bandeja de entrada": <BandejaSocialPage />,
     "Menciones": <MencionesSocialPage />,
   },
+  "ai-studio": {
+    "Generar Imagen": <AIImagePage />,
+    "Generar Video": <AIVideoPage />,
+    "Generar Copy": <GeneradorCopyPage />,
+    "Editor de Marca": <BrandEditorPage />,
+    "Chat IA": <AIChatPage />,
+  },
   automations: {
     "Todos los workflows": <TodosWorkflowsPage />,
     "Crear workflow": <CrearWorkflowPage />,
@@ -194,6 +208,7 @@ const DEFAULT_ITEMS: Record<string, string> = {
   email: "Campanas",
   whatsapp: "Conversaciones",
   social: "Calendario",
+  "ai-studio": "Generar Imagen",
   automations: "Todos los workflows",
   reports: "Resumen ejecutivo",
   integrations: "Meta Ads",

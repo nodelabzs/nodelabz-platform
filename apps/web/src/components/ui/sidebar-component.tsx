@@ -8,6 +8,7 @@ import {
   Mail,
   MessageCircle,
   Share2,
+  Wand2,
   Workflow,
   BarChart3,
   Plug,
@@ -50,6 +51,7 @@ const navItems: NavItem[] = [
   { id: "email", icon: <Mail size={18} />, label: "Email", permission: "campaigns" },
   { id: "whatsapp", icon: <MessageCircle size={18} />, label: "WhatsApp", permission: "campaigns" },
   { id: "social", icon: <Share2 size={18} />, label: "Social", permission: "campaigns" },
+  { id: "ai-studio", icon: <Wand2 size={18} />, label: "AI Studio", permission: "campaigns" },
   { id: "automations", icon: <Workflow size={18} />, label: "Automatizaciones", permission: "campaigns", gatedFeature: "workflows" },
   { id: "reports", icon: <BarChart3 size={18} />, label: "Reportes", permission: "reports" },
   { id: "integrations", icon: <Plug size={18} />, label: "Integraciones", permission: "integrations" },
@@ -102,6 +104,14 @@ const contentMap: Record<string, DetailContent> = {
       { title: "PUBLICACIONES", items: [{ label: "Calendario", isActive: true }, { label: "Crear publicacion" }] },
       { title: "CANALES", items: [{ label: "Facebook" }, { label: "Instagram" }, { label: "TikTok" }, { label: "LinkedIn" }] },
       { title: "ENGAGEMENT", items: [{ label: "Bandeja de entrada" }, { label: "Menciones" }] },
+    ],
+  },
+  "ai-studio": {
+    title: "AI Studio",
+    sections: [
+      { title: "GENERACION", items: [{ label: "Generar Imagen", isActive: true }, { label: "Generar Video" }, { label: "Generar Copy" }] },
+      { title: "MARCA", items: [{ label: "Editor de Marca" }] },
+      { title: "ASISTENTE", items: [{ label: "Chat IA" }] },
     ],
   },
   automations: {

@@ -107,6 +107,13 @@ export function DashboardShell({
     return () => window.removeEventListener("dashboard:navigate", handler);
   }, []);
 
+  // Listen for toggle-ai-chat events from AI Studio Chat page
+  useEffect(() => {
+    const handler = () => setAiChatOpen((prev) => !prev);
+    window.addEventListener("toggle-ai-chat", handler);
+    return () => window.removeEventListener("toggle-ai-chat", handler);
+  }, []);
+
   // When section changes, reset active item to default
   const handleSectionChange = useCallback((section: string) => {
     navSourceRef.current = "click";

@@ -24,6 +24,7 @@ import { dashboardRouter } from "./routers/dashboard";
 import { tenantRouter } from "./routers/tenant";
 import { businessContextRouter } from "./routers/business-context";
 import { mediaGenRouter } from "./routers/media-gen";
+import { aiMemoryRouter } from "./routers/ai-memory";
 
 export const appRouter = router({
   health: publicProcedure.query(() => ({ status: "ok" })),
@@ -51,6 +52,7 @@ export const appRouter = router({
   tenant: tenantRouter,
   businessContext: businessContextRouter,
   mediaGen: mediaGenRouter,
+  aiMemory: aiMemoryRouter,
 });
 
 export type AppRouter = typeof appRouter;
