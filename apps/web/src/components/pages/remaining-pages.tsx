@@ -906,30 +906,292 @@ export function SecuenciasWAPage() {
 }
 
 export function NumeroConectadoPage() {
-  const { data: integrations, isLoading } = trpc.integrations.list.useQuery();
-  const waIntegration = integrations?.find((i) => i.platform === "whatsapp" && i.status === "active");
+  const utils = trpc.useUtils();
+  const { data: connection, isLoading } = trpc.whatsapp.getConnection.useQuery();
+  const connectMutation = trpc.whatsapp.connect.useMutation({
+    onSuccess: () => {
+      utils.whatsapp.getConnection.invalidate();
+      utils.integrations.list.invalidate();
+      setShowManual(false);
+      setPhoneNumberId("");
+      setAccessToken("");
+      setDisplayPhone("");
+    },
+  });
+  const disconnectMutation = trpc.whatsapp.disconnect.useMutation({
+    onSuccess: () => {
+      utils.whatsapp.getConnection.invalidate();
+      utils.integrations.list.invalidate();
+    },
+  });
+
+  const [showManual, setShowManual] = useState(false);
+  const [phoneNumberId, setPhoneNumberId] = useState("");
+  const [accessToken, setAccessToken] = useState("");
+  const [displayPhone, setDisplayPhone] = useState("");
+  const [embeddedLoading, setEmbeddedLoading] = useState(false);
+  const [embeddedError, setEmbeddedError] = useState("");
+
+  // Load Facebook SDK on mount
+  useEffect(() => {
+    if (document.getElementById("facebook-jssdk")) return;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).fbAsyncInit = function () {
+      const appId = process.env.NEXT_PUBLIC_WHATSAPP_APP_ID;
+      if (!appId) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).FB.init({
+        appId,
+        cookie: true,
+        xfbml: true,
+        version: "v22.0",
+      });
+    };
+
+    const script = document.createElement("script");
+    script.id = "facebook-jssdk";
+    script.src = "https://connect.facebook.net/en_US/sdk.js";
+    script.async = true;
+    script.defer = true;
+    script.crossOrigin = "anonymous";
+    document.body.appendChild(script);
+  }, []);
+
+  const handleEmbeddedSignup = () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const FB = (window as any).FB;
+    const configId = process.env.NEXT_PUBLIC_WHATSAPP_CONFIG_ID;
+
+    if (!FB || !configId) {
+      setEmbeddedError("WhatsApp Embedded Signup no esta disponible. Usa la conexion manual.");
+      return;
+    }
+
+    setEmbeddedLoading(true);
+    setEmbeddedError("");
+
+    // Captured from the session info listener
+    let capturedWabaId = "";
+    let capturedPhoneNumberId = "";
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== "https://www.facebook.com" && event.origin !== "https://web.facebook.com") return;
+      try {
+        const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+        if (data.type === "WA_EMBEDDED_SIGNUP") {
+          if (data.data?.waba_id) capturedWabaId = data.data.waba_id;
+          if (data.data?.phone_number_id) capturedPhoneNumberId = data.data.phone_number_id;
+        }
+      } catch {
+        // ignore non-JSON messages
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+
+    FB.login(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (response: any) => {
+        window.removeEventListener("message", handleMessage);
+
+        if (!response.authResponse?.code) {
+          setEmbeddedLoading(false);
+          setEmbeddedError("Conexion cancelada o fallida.");
+          return;
+        }
+
+        const code = response.authResponse.code;
+
+        if (!capturedWabaId || !capturedPhoneNumberId) {
+          setEmbeddedLoading(false);
+          setEmbeddedError("No se recibieron los datos de WhatsApp. Intenta de nuevo.");
+          return;
+        }
+
+        // Exchange code for token on our backend
+        fetch("/api/whatsapp/exchange-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            code,
+            wabaId: capturedWabaId,
+            phoneNumberId: capturedPhoneNumberId,
+          }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success) {
+              utils.whatsapp.getConnection.invalidate();
+              utils.integrations.list.invalidate();
+            } else {
+              setEmbeddedError(data.error || "Error al conectar.");
+            }
+          })
+          .catch(() => {
+            setEmbeddedError("Error de red. Intenta de nuevo.");
+          })
+          .finally(() => {
+            setEmbeddedLoading(false);
+          });
+      },
+      {
+        config_id: configId,
+        response_type: "code",
+        override_default_response_type: true,
+        extras: {
+          sessionInfoVersion: 2,
+        },
+      }
+    );
+  };
+
+  const handleManualConnect = () => {
+    if (!phoneNumberId.trim() || !accessToken.trim()) return;
+    connectMutation.mutate({
+      phoneNumberId: phoneNumberId.trim(),
+      accessToken: accessToken.trim(),
+      displayPhone: displayPhone.trim() || undefined,
+    });
+  };
 
   return (
     <>
       <SectionHeader title="Numero Conectado" description="Configuracion de tu numero de WhatsApp Business" />
       {isLoading ? (
         <div className="h-24 rounded-lg bg-[#1e1e1e] animate-pulse" />
-      ) : waIntegration ? (
+      ) : connection?.connected ? (
         <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
-          <div className="flex items-center gap-3 mb-4">
-            <Phone size={20} className="text-[#25D366]" />
-            <div>
-              <p className="text-[14px] font-medium text-[#ededed]">{waIntegration.accountId ?? "Numero conectado"}</p>
-              <p className="text-[11px] text-[#888]">WhatsApp Business API</p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Phone size={20} className="text-[#25D366]" />
+              <div>
+                <p className="text-[14px] font-medium text-[#ededed]">
+                  {connection.displayPhone || connection.phoneNumberId}
+                </p>
+                <p className="text-[11px] text-[#888]">Phone Number ID: {connection.phoneNumberId}</p>
+              </div>
+              <Badge text="Conectado" color="#3ecf8e" />
             </div>
-            <Badge text="Conectado" color="#3ecf8e" />
+            <button
+              onClick={() => {
+                if (confirm("¿Desconectar WhatsApp? Se dejaran de recibir mensajes.")) {
+                  disconnectMutation.mutate();
+                }
+              }}
+              className="text-[12px] text-red-400 hover:text-red-300 px-3 py-1.5 rounded border border-[#2e2e2e] hover:border-red-400/30 transition-colors"
+            >
+              Desconectar
+            </button>
           </div>
         </div>
       ) : (
-        <div className="rounded-lg border border-[#2e2e2e] p-12 text-center" style={{ backgroundColor: "#1e1e1e" }}>
-          <Phone size={32} className="text-[#555] mx-auto mb-3" />
-          <p className="text-[14px] text-[#ededed] font-medium mb-1">Sin numero conectado</p>
-          <p className="text-[12px] text-[#888]">Conecta tu numero de WhatsApp Business para comenzar.</p>
+        <div className="space-y-4">
+          {/* Embedded Signup — Primary */}
+          <div className="rounded-lg border border-[#2e2e2e] p-6" style={{ backgroundColor: "#1e1e1e" }}>
+            <div className="text-center py-4">
+              <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3" style={{ backgroundColor: "#25D36615" }}>
+                <Phone size={24} className="text-[#25D366]" />
+              </div>
+              <p className="text-[15px] text-[#ededed] font-medium mb-1">Conectar WhatsApp Business</p>
+              <p className="text-[12px] text-[#888] mb-5 max-w-md mx-auto">
+                Conecta tu numero de WhatsApp en un clic. Se abrira una ventana de Meta donde podras seleccionar o crear tu cuenta de WhatsApp Business.
+              </p>
+              <button
+                onClick={handleEmbeddedSignup}
+                disabled={embeddedLoading}
+                className="inline-flex items-center gap-2 text-[13px] text-white px-6 py-2.5 rounded-lg font-medium disabled:opacity-50 transition-colors"
+                style={{ backgroundColor: "#25D366" }}
+              >
+                {embeddedLoading ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Conectando...
+                  </>
+                ) : (
+                  <>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+                    </svg>
+                    Conectar con WhatsApp
+                  </>
+                )}
+              </button>
+              {embeddedError && (
+                <p className="text-[11px] text-red-400 mt-3">{embeddedError}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Manual Fallback */}
+          <div className="rounded-lg border border-[#2e2e2e]" style={{ backgroundColor: "#1e1e1e" }}>
+            <button
+              onClick={() => setShowManual(!showManual)}
+              className="w-full flex items-center justify-between px-4 py-3 text-left"
+            >
+              <span className="text-[12px] text-[#888]">Conexion manual (avanzado)</span>
+              <ChevronRight
+                size={14}
+                className={`text-[#555] transition-transform ${showManual ? "rotate-90" : ""}`}
+              />
+            </button>
+            {showManual && (
+              <div className="px-4 pb-4 space-y-3 border-t border-[#2e2e2e] pt-3">
+                <p className="text-[11px] text-[#666]">
+                  Si prefieres configurar manualmente, ingresa tu Phone Number ID y Access Token de la{" "}
+                  <a href="https://developers.facebook.com" target="_blank" rel="noopener noreferrer" className="text-[#3ecf8e] hover:underline">
+                    consola de Meta
+                  </a>.
+                </p>
+                <div>
+                  <label className="block text-[12px] text-[#888] mb-1">Phone Number ID *</label>
+                  <input
+                    type="text"
+                    value={phoneNumberId}
+                    onChange={(e) => setPhoneNumberId(e.target.value)}
+                    placeholder="Ej: 1063189020210775"
+                    className="w-full px-3 py-2 rounded border border-[#2e2e2e] bg-[#141414] text-[13px] text-[#ededed] placeholder:text-[#555] focus:outline-none focus:border-[#3ecf8e]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[12px] text-[#888] mb-1">Access Token *</label>
+                  <input
+                    type="password"
+                    value={accessToken}
+                    onChange={(e) => setAccessToken(e.target.value)}
+                    placeholder="Token permanente de Meta Business"
+                    className="w-full px-3 py-2 rounded border border-[#2e2e2e] bg-[#141414] text-[13px] text-[#ededed] placeholder:text-[#555] focus:outline-none focus:border-[#3ecf8e]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[12px] text-[#888] mb-1">Numero (opcional)</label>
+                  <input
+                    type="text"
+                    value={displayPhone}
+                    onChange={(e) => setDisplayPhone(e.target.value)}
+                    placeholder="Ej: +506 7121-6429"
+                    className="w-full px-3 py-2 rounded border border-[#2e2e2e] bg-[#141414] text-[13px] text-[#ededed] placeholder:text-[#555] focus:outline-none focus:border-[#3ecf8e]"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleManualConnect}
+                    disabled={connectMutation.isPending || !phoneNumberId.trim() || !accessToken.trim()}
+                    className="text-[12px] text-black px-4 py-2 rounded font-medium disabled:opacity-50"
+                    style={{ backgroundColor: "#3ecf8e" }}
+                  >
+                    {connectMutation.isPending ? "Guardando..." : "Conectar"}
+                  </button>
+                  {connectMutation.isError && (
+                    <p className="text-[11px] text-red-400">{connectMutation.error.message}</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </>

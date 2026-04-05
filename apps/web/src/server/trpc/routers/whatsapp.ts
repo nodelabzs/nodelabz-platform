@@ -38,6 +38,81 @@ const autoReplyRuleSchema = z.object({
 
 export const whatsappRouter = router({
   /**
+   * Connect or update WhatsApp Business credentials for the tenant.
+   */
+  connect: tenantProcedure
+    .input(
+      z.object({
+        phoneNumberId: z.string().min(1),
+        accessToken: z.string().min(1),
+        displayPhone: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const tenantId = ctx.effectiveTenantId;
+
+      // Upsert the integration record
+      const existing = await prisma.integration.findFirst({
+        where: { tenantId, platform: "whatsapp" },
+      });
+
+      if (existing) {
+        await prisma.integration.update({
+          where: { id: existing.id },
+          data: {
+            accountId: input.phoneNumberId,
+            accessToken: input.accessToken,
+            status: "active",
+            metadata: {
+              ...((existing.metadata as Record<string, unknown>) || {}),
+              displayPhone: input.displayPhone,
+            },
+          },
+        });
+        return { success: true, updated: true };
+      }
+
+      await prisma.integration.create({
+        data: {
+          tenantId,
+          platform: "whatsapp",
+          accountId: input.phoneNumberId,
+          accessToken: input.accessToken,
+          status: "active",
+          metadata: { displayPhone: input.displayPhone },
+        },
+      });
+
+      return { success: true, updated: false };
+    }),
+
+  /**
+   * Disconnect WhatsApp integration for the tenant.
+   */
+  disconnect: tenantProcedure.mutation(async ({ ctx }) => {
+    await prisma.integration.deleteMany({
+      where: { tenantId: ctx.effectiveTenantId, platform: "whatsapp" },
+    });
+    return { success: true };
+  }),
+
+  /**
+   * Get current WhatsApp connection status.
+   */
+  getConnection: tenantProcedure.query(async ({ ctx }) => {
+    const integration = await prisma.integration.findFirst({
+      where: { tenantId: ctx.effectiveTenantId, platform: "whatsapp", status: "active" },
+    });
+    if (!integration) return { connected: false };
+    const meta = (integration.metadata as Record<string, unknown>) || {};
+    return {
+      connected: true,
+      phoneNumberId: integration.accountId,
+      displayPhone: (meta.displayPhone as string) || null,
+    };
+  }),
+
+  /**
    * List conversations — distinct contacts with WhatsApp messages,
    * latest message and unread count per contact.
    */
