@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { stripe } from "@/server/stripe/client";
 import { prisma } from "@nodelabz/db";
-import { PLAN_PRICES } from "@/server/stripe/plans";
+import { PLAN_PRICES, PLAN_PRICES_ANNUAL } from "@/server/stripe/plans";
 import type Stripe from "stripe";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +9,9 @@ export const dynamic = "force-dynamic";
 /** Reverse-lookup: given a Stripe price ID, return the plan name */
 function planFromPriceId(priceId: string): string | null {
   for (const [plan, id] of Object.entries(PLAN_PRICES)) {
+    if (id === priceId) return plan;
+  }
+  for (const [plan, id] of Object.entries(PLAN_PRICES_ANNUAL)) {
     if (id === priceId) return plan;
   }
   return null;

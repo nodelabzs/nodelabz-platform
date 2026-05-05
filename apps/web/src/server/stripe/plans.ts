@@ -76,3 +76,12 @@ export const PLAN_PRICES: Record<PlanName, string> = {
     process.env.STRIPE_PRICE_PROFESIONAL || "price_placeholder_pro",
   AGENCIA: process.env.STRIPE_PRICE_AGENCIA || "price_placeholder_agencia",
 };
+
+export const PLAN_PRICES_ANNUAL: Record<PlanName, string> = {
+  INICIO: process.env.STRIPE_PRICE_INICIO_ANNUAL || "price_placeholder_inicio_annual",
+  CRECIMIENTO:
+    process.env.STRIPE_PRICE_CRECIMIENTO_ANNUAL || "price_placeholder_crec_annual",
+  PROFESIONAL:
+    process.env.STRIPE_PRICE_PROFESIONAL_ANNUAL || "price_placeholder_pro_annual",
+  AGENCIA: process.env.STRIPE_PRICE_AGENCIA_ANNUAL || "price_placeholder_agencia_annual",
+};

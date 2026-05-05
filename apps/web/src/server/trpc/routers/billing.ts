@@ -5,6 +5,7 @@ import { router, tenantProcedure } from "../init";
 import { stripe } from "@/server/stripe/client";
 import {
   PLAN_PRICES,
+  PLAN_PRICES_ANNUAL,
   PLAN_LIMITS,
   type PlanName,
 } from "@/server/stripe/plans";
@@ -122,6 +123,7 @@ export const billingRouter = router({
     .input(
       z.object({
         plan: z.enum(["INICIO", "CRECIMIENTO", "PROFESIONAL", "AGENCIA"]),
+        interval: z.enum(["month", "year"]).default("month"),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -149,7 +151,9 @@ export const billingRouter = router({
         });
       }
 
-      const priceId = PLAN_PRICES[input.plan];
+      const priceId = input.interval === "year"
+        ? PLAN_PRICES_ANNUAL[input.plan]
+        : PLAN_PRICES[input.plan];
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
       const session = await stripe.checkout.sessions.create({
@@ -310,12 +314,14 @@ export const billingRouter = router({
         return { plan: tenant.plan, synced: false };
       }
 
-      // Reverse-lookup plan from price ID
+      // Reverse-lookup plan from price ID (check both monthly and annual)
       let newPlan: string | null = null;
       for (const [plan, id] of Object.entries(PLAN_PRICES)) {
-        if (id === priceId) {
-          newPlan = plan;
-          break;
+        if (id === priceId) { newPlan = plan; break; }
+      }
+      if (!newPlan) {
+        for (const [plan, id] of Object.entries(PLAN_PRICES_ANNUAL)) {
+          if (id === priceId) { newPlan = plan; break; }
         }
       }
 

@@ -2,11 +2,11 @@
   "crons": [
     {
       "path": "/api/cron/sync-integrations",
-      "schedule": "0 0 * * *"
+      "schedule": "0 */6 * * *"
     },
     {
       "path": "/api/cron/process-sequences",
-      "schedule": "0 0 * * *"
+      "schedule": "0 * * * *"
     },
     {
       "path": "/api/cron/send-reports",
