@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     const integrations = await prisma.integration.findMany({
       where: {
         status: { in: ["active", "expired"] },
-        platform: { in: ["meta_ads", "google_ads", "ga4"] },
+        platform: { in: ["meta_ads", "google_ads", "ga4", "tiktok"] },
       },
       select: {
         id: true,
