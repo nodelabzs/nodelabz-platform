@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@nodelabz/db";
+import { rateLimit, getClientIp } from "@/server/rate-limit";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
+  const ip = getClientIp(request);
+  const { allowed } = rateLimit(`track:click:${ip}`, { maxRequests: 60, windowMs: 60_000 });
+  if (!allowed) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+
   const { searchParams } = request.nextUrl;
   const campaignId = searchParams.get("cid");
   const email = searchParams.get("eid");

@@ -1,6 +1,7 @@
 import { prisma, Prisma } from "@nodelabz/db";
 import { refreshGoogleToken } from "./google/auth";
 import { notifyIntegrationSync } from "../notifications/notify";
+import { decrypt } from "../encryption";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -35,12 +36,12 @@ async function ensureGoogleToken(integration: {
   expiresAt: Date | null;
 }): Promise<string> {
   if (integration.expiresAt && integration.expiresAt > new Date()) {
-    return integration.accessToken;
+    return decrypt(integration.accessToken);
   }
   if (!integration.refreshToken) {
     throw new Error("Token expired and no refresh token available");
   }
-  const { accessToken, expiresIn } = await refreshGoogleToken(integration.refreshToken);
+  const { accessToken, expiresIn } = await refreshGoogleToken(decrypt(integration.refreshToken));
   await prisma.integration.update({
     where: { id: integration.id },
     data: {
@@ -83,7 +84,7 @@ export async function syncMetaAds(tenantId: string, integrationId: string): Prom
       time_range: timeRange,
       time_increment: "1",
       level: "campaign",
-      access_token: integration.accessToken,
+      access_token: decrypt(integration.accessToken),
       limit: "500",
     });
 
@@ -319,21 +320,36 @@ export async function syncGA4(tenantId: string, integrationId: string): Promise<
       const campaignId = `${source} / ${medium}`;
       const date = new Date(`${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`);
 
+      const ga4Metadata = { sessions, totalUsers, engagementRate, source, medium };
+
       await prisma.campaignMetric.upsert({
         where: {
           tenantId_integrationId_campaignId_date: { tenantId, integrationId, campaignId, date },
         },
         update: {
-          campaignName: campaignId, impressions: sessions, clicks: totalUsers,
-          spend: new Prisma.Decimal(0), conversions, revenue: new Prisma.Decimal(0),
-          ctr: new Prisma.Decimal(engagementRate), cpc: new Prisma.Decimal(0), roas: new Prisma.Decimal(0),
+          campaignName: campaignId,
+          impressions: sessions,
+          clicks: conversions, // GA4 conversions map to "clicks" as the meaningful action count
+          spend: new Prisma.Decimal(0),
+          conversions,
+          revenue: new Prisma.Decimal(0),
+          ctr: new Prisma.Decimal(engagementRate),
+          cpc: new Prisma.Decimal(0),
+          roas: new Prisma.Decimal(0),
+          metadata: ga4Metadata,
         },
         create: {
           tenantId, integrationId, platform: "ga4",
           campaignId, campaignName: campaignId, date,
-          impressions: sessions, clicks: totalUsers,
-          spend: new Prisma.Decimal(0), conversions, revenue: new Prisma.Decimal(0),
-          ctr: new Prisma.Decimal(engagementRate), cpc: new Prisma.Decimal(0), roas: new Prisma.Decimal(0),
+          impressions: sessions,
+          clicks: conversions,
+          spend: new Prisma.Decimal(0),
+          conversions,
+          revenue: new Prisma.Decimal(0),
+          ctr: new Prisma.Decimal(engagementRate),
+          cpc: new Prisma.Decimal(0),
+          roas: new Prisma.Decimal(0),
+          metadata: ga4Metadata,
         },
       });
       syncedCount++;

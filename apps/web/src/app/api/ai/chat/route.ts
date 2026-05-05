@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { findUserBySupabaseId } from "@/server/auth/provision";
+import { rateLimit, getClientIp } from "@/server/rate-limit";
 
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL;
 
@@ -8,6 +9,15 @@ export const dynamic = "force-dynamic";
 const TIMEOUT_MS = 30_000;
 
 export async function POST(req: Request) {
+  // Rate limit: 20 AI chat requests per minute per IP
+  const ip = getClientIp(req);
+  const { allowed } = rateLimit(`ai:chat:${ip}`, { maxRequests: 20, windowMs: 60_000 });
+  if (!allowed) {
+    return new Response(JSON.stringify({ error: "Demasiadas solicitudes. Espera un momento." }), {
+      status: 429, headers: { "Content-Type": "application/json" },
+    });
+  }
+
   // Auth check
   const supabase = await createClient();
   const {

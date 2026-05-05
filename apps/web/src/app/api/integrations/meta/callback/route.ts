@@ -6,6 +6,7 @@ import {
   exchangeForLongLivedToken,
   getAdAccounts,
 } from "@/server/integrations/meta/auth";
+import { encrypt } from "@/server/encryption";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -46,6 +47,8 @@ export async function GET(request: NextRequest) {
     const expiresAt = new Date(Date.now() + expiresIn * 1000);
     const primaryAccountId = adAccounts[0]?.accountId || null;
 
+    const encryptedToken = encrypt(longLivedToken);
+
     await prisma.integration.upsert({
       where: {
         tenantId_platform_accountId: {
@@ -55,7 +58,7 @@ export async function GET(request: NextRequest) {
         },
       },
       update: {
-        accessToken: longLivedToken,
+        accessToken: encryptedToken,
         expiresAt,
         metadata: { adAccounts },
         status: "active",
@@ -63,7 +66,7 @@ export async function GET(request: NextRequest) {
       create: {
         tenantId: oauthState.tenantId,
         platform: "meta_ads",
-        accessToken: longLivedToken,
+        accessToken: encryptedToken,
         accountId: primaryAccountId,
         expiresAt,
         metadata: { adAccounts },

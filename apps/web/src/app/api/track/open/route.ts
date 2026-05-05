@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@nodelabz/db";
+import { rateLimit, getClientIp } from "@/server/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,12 @@ const TRANSPARENT_GIF = Buffer.from(
 );
 
 export async function GET(request: NextRequest) {
+  const ip = getClientIp(request);
+  const { allowed } = rateLimit(`track:open:${ip}`, { maxRequests: 100, windowMs: 60_000 });
+  if (!allowed) {
+    return new NextResponse(TRANSPARENT_GIF, { status: 200, headers: { "Content-Type": "image/gif" } });
+  }
+
   const { searchParams } = request.nextUrl;
   const campaignId = searchParams.get("cid");
   const email = searchParams.get("eid");
