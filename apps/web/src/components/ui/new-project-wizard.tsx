@@ -33,10 +33,10 @@ const regions = [
 ];
 
 const plans = [
-  { id: "INICIO", name: "Inicio", price: "$39", desc: "Recomendaciones IA, CRM basico, 3 integraciones" },
-  { id: "CRECIMIENTO", name: "Crecimiento", price: "$79", desc: "Email marketing, formularios, automatizaciones" },
-  { id: "PROFESIONAL", name: "Profesional", price: "$149", desc: "WhatsApp, Node Map, lead automation completa" },
-  { id: "AGENCIA", name: "Agencia", price: "$249", desc: "IA autonoma, Voice AI, video ads, white-label" },
+  { id: "INICIO", name: "Inicio", price: "$79", desc: "Recomendaciones IA, CRM basico, 3 integraciones" },
+  { id: "CRECIMIENTO", name: "Crecimiento", price: "$199", desc: "Email marketing, formularios, automatizaciones" },
+  { id: "PROFESIONAL", name: "Profesional", price: "$399", desc: "WhatsApp, Node Map, lead automation completa" },
+  { id: "AGENCIA", name: "Agencia", price: "$799", desc: "IA autonoma, Voice AI, video ads, white-label" },
 ];
 
 export function NewProjectWizard({ open, onClose }: NewProjectWizardProps) {

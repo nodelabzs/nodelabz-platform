@@ -14,9 +14,9 @@ const PLAN_DESCRIPTIONS: Record<string, string> = {
 };
 
 const PLAN_PRICE_LABELS: Record<string, string> = {
-  CRECIMIENTO: "$79/mes",
-  PROFESIONAL: "$199/mes",
-  AGENCIA: "$399/mes",
+  CRECIMIENTO: "$199/mes",
+  PROFESIONAL: "$399/mes",
+  AGENCIA: "$799/mes",
 };
 
 interface UpgradeModalProps {

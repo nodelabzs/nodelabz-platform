@@ -6,10 +6,10 @@ const PLAN_DETAILS: Record<
   string,
   { name: string; price: string; contacts: string; emails: string; ai: string; images: string; videos: string }
 > = {
-  INICIO: { name: "Inicio", price: "$39/mes", contacts: "500", emails: "5,000", ai: "Haiku", images: "10", videos: "0" },
-  CRECIMIENTO: { name: "Crecimiento", price: "$99/mes", contacts: "5,000", emails: "25,000", ai: "Sonnet", images: "100", videos: "5" },
-  PROFESIONAL: { name: "Profesional", price: "$249/mes", contacts: "25,000", emails: "100,000", ai: "Opus", images: "500", videos: "20" },
-  AGENCIA: { name: "Agencia", price: "$499/mes", contacts: "Unlimited", emails: "Unlimited", ai: "Opus", images: "Unlimited", videos: "50" },
+  INICIO: { name: "Inicio", price: "$79/mes", contacts: "500", emails: "5,000", ai: "Haiku", images: "10", videos: "0" },
+  CRECIMIENTO: { name: "Crecimiento", price: "$199/mes", contacts: "5,000", emails: "25,000", ai: "Sonnet", images: "100", videos: "5" },
+  PROFESIONAL: { name: "Profesional", price: "$399/mes", contacts: "25,000", emails: "100,000", ai: "Opus", images: "500", videos: "20" },
+  AGENCIA: { name: "Agencia", price: "$799/mes", contacts: "Unlimited", emails: "Unlimited", ai: "Opus", images: "Unlimited", videos: "50" },
 };
 
 function UsageBar({ used, limit, unlimited }: { used: number; limit: number; unlimited: boolean }) {

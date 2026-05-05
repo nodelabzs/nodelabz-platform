@@ -292,10 +292,10 @@ export function HomePage() {
     AGENCIA: "Plan Agencia",
   };
   const planPrices: Record<string, string> = {
-    INICIO: "$39/mes",
-    CRECIMIENTO: "$79/mes",
-    PROFESIONAL: "$149/mes",
-    AGENCIA: "$299/mes",
+    INICIO: "$79/mes",
+    CRECIMIENTO: "$199/mes",
+    PROFESIONAL: "$399/mes",
+    AGENCIA: "$799/mes",
   };
 
   // Default pipeline stage colors (fallback for display)
@@ -360,8 +360,13 @@ export function HomePage() {
     ];
   }, [usage]);
 
-  // Whether to show onboarding section
-  const showOnboarding = connectedIntegrations.length === 0 || contactCount === 0;
+  // Whether to show onboarding section — only after data loads, and dismissable
+  const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
+    if (typeof window !== "undefined") return localStorage.getItem("nodelabz_onboarding_dismissed") === "true";
+    return false;
+  });
+  const dataLoaded = !contactsLoading && !integrationsLoading;
+  const showOnboarding = dataLoaded && !onboardingDismissed && (connectedIntegrations.length === 0 || contactCount === 0);
 
   // Loading pulse class
   const pulse = "animate-pulse bg-[#333] rounded text-transparent select-none";
@@ -511,7 +516,15 @@ export function HomePage() {
               <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "#3ecf8e" }} />
               <h2 className="text-[16px] font-semibold text-[#ededed]">Primeros pasos</h2>
             </div>
-            <button className="text-[12px] text-[#888] hover:text-[#ccc] transition-colors">Ocultar</button>
+            <button
+              onClick={() => {
+                setOnboardingDismissed(true);
+                localStorage.setItem("nodelabz_onboarding_dismissed", "true");
+              }}
+              className="text-[12px] text-[#888] hover:text-[#ccc] transition-colors"
+            >
+              Ocultar
+            </button>
           </div>
 
           <div className="grid grid-cols-4 gap-4">
@@ -749,36 +762,40 @@ function HealthGauge({ score, color, size = 180 }: { score: number; color: strin
           strokeDashoffset={circumference * 0.25}
           transform={`rotate(135 ${center} ${center})`}
         />
-        {/* Score arc */}
-        <circle
-          cx={center}
-          cy={center}
-          r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth={10}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={strokeDashoffset + circumference * 0.25}
-          transform={`rotate(135 ${center} ${center})`}
-          style={{ transition: "stroke-dashoffset 1s ease-out" }}
-        />
-        {/* Glow effect */}
-        <circle
-          cx={center}
-          cy={center}
-          r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth={10}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={strokeDashoffset + circumference * 0.25}
-          transform={`rotate(135 ${center} ${center})`}
-          opacity={0.2}
-          filter="blur(6px)"
-          style={{ transition: "stroke-dashoffset 1s ease-out" }}
-        />
+        {/* Score arc — only render if score > 0 */}
+        {score > 0 && (
+          <>
+            <circle
+              cx={center}
+              cy={center}
+              r={radius}
+              fill="none"
+              stroke={color}
+              strokeWidth={10}
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={strokeDashoffset + circumference * 0.25}
+              transform={`rotate(135 ${center} ${center})`}
+              style={{ transition: "stroke-dashoffset 1s ease-out" }}
+            />
+            {/* Glow effect */}
+            <circle
+              cx={center}
+              cy={center}
+              r={radius}
+              fill="none"
+              stroke={color}
+              strokeWidth={10}
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={strokeDashoffset + circumference * 0.25}
+              transform={`rotate(135 ${center} ${center})`}
+              opacity={0.2}
+              filter="blur(6px)"
+              style={{ transition: "stroke-dashoffset 1s ease-out" }}
+            />
+          </>
+        )}
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-[40px] font-bold text-[#ededed] leading-none">{score}</span>
@@ -804,14 +821,16 @@ function MiniGauge({ score, color, size = 52 }: { score: number; color: string; 
           strokeDasharray={circumference} strokeDashoffset={circumference * 0.25}
           transform={`rotate(135 ${center} ${center})`}
         />
-        <circle
-          cx={center} cy={center} r={radius}
-          fill="none" stroke={color} strokeWidth={4} strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={strokeDashoffset + circumference * 0.25}
-          transform={`rotate(135 ${center} ${center})`}
-          style={{ transition: "stroke-dashoffset 0.8s ease-out" }}
-        />
+        {score > 0 && (
+          <circle
+            cx={center} cy={center} r={radius}
+            fill="none" stroke={color} strokeWidth={4} strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset + circumference * 0.25}
+            transform={`rotate(135 ${center} ${center})`}
+            style={{ transition: "stroke-dashoffset 0.8s ease-out" }}
+          />
+        )}
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">
         <span className="text-[13px] font-semibold text-[#ededed]">{score}</span>
@@ -974,19 +993,21 @@ export function HealthScorePage() {
                 <div key={p.label} className="flex items-center gap-3">
                   <span className="text-[12px] text-[#888] w-44 flex-shrink-0 truncate">{p.label}</span>
                   <div className="flex-1 h-3 rounded-full relative" style={{ backgroundColor: "#252525" }}>
-                    <div
-                      className="h-3 rounded-full relative"
-                      style={{
-                        width: `${Math.min(p.score, 100)}%`,
-                        background: `linear-gradient(90deg, ${p.color}88, ${p.color})`,
-                        transition: "width 0.8s ease-out",
-                      }}
-                    >
+                    {p.score > 0 && (
                       <div
-                        className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full border-2"
-                        style={{ borderColor: p.color, backgroundColor: "#1e1e1e" }}
-                      />
-                    </div>
+                        className="h-3 rounded-full relative"
+                        style={{
+                          width: `${Math.min(p.score, 100)}%`,
+                          background: `linear-gradient(90deg, ${p.color}88, ${p.color})`,
+                          transition: "width 0.8s ease-out",
+                        }}
+                      >
+                        <div
+                          className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full border-2"
+                          style={{ borderColor: p.color, backgroundColor: "#1e1e1e" }}
+                        />
+                      </div>
+                    )}
                   </div>
                   <span className="text-[13px] font-semibold text-[#ededed] w-8 text-right">{p.score}</span>
                 </div>
@@ -1397,7 +1418,7 @@ export function MetricasPage() {
       }
     }
 
-    // Scan for first position where the new card fits within visible area
+    // Scan for first position where the new card fits (allow scrolling)
     const MAX_ROWS = maxRows;
     let placeX = 0;
     let placeY = 0;
@@ -1473,7 +1494,6 @@ export function MetricasPage() {
   const checkFits = useCallback((gx: number, gy: number, w: number, h: number, occupied: Set<string>) => {
     const clampedX = Math.max(0, Math.min(gx, GRID_COLS - w));
     const clampedY = Math.max(0, gy);
-    // Check if widget would exceed the visible area
     if (clampedY + h > maxRows) return false;
     for (let dy = 0; dy < h; dy++) {
       for (let dx = 0; dx < w; dx++) {
@@ -1731,14 +1751,13 @@ export function MetricasPage() {
                 rowHeight: 30,
                 margin: [14, 14] as const,
                 containerPadding: [0, 0] as const,
-                maxRows,
               }}
               compactor={{
                 ...noCompactor,
                 allowOverlap: false,
-                preventCollision: true,
+                preventCollision: false,
               }}
-              dragConfig={{ enabled: true, handle: ".grid-drag-handle", bounded: true }}
+              dragConfig={{ enabled: true, handle: ".grid-drag-handle" }}
               resizeConfig={{ enabled: true, handles: ["n", "s", "e", "w", "ne", "nw", "se", "sw"] as const }}
               width={gridWidth}
               onLayoutChange={handleLayoutChange}
@@ -2550,11 +2569,23 @@ function DetailPanel({
 
 export function NodeMapPage() {
   const { data: session } = trpc.auth.getSession.useQuery();
-  const { data: integrations } = trpc.integrations.list.useQuery();
+  const { data: integrations, isLoading: integrationsLoading } = trpc.integrations.list.useQuery();
 
-  // Build nodes from real integrations + static fallback nodes
+  // Build nodes from real integrations — never show fake demo data
   const dynamicNodes = useMemo((): Node<IntegrationNodeData>[] => {
-    if (!integrations || integrations.length === 0) return nodeMapInitialNodes;
+    // While loading, show just the hub node
+    if (!integrations) return [{
+      id: "hub",
+      type: "integration" as const,
+      position: { x: 400, y: 250 },
+      data: { label: session?.tenant?.name ?? "Mi Empresa", icon: "users" as keyof typeof nodeMapIconMap, status: "healthy" as StatusType, subtitle: "CRM & Data Hub", description: "Cargando integraciones..." },
+    }];
+    if (integrations.length === 0) return [{
+      id: "hub",
+      type: "integration" as const,
+      position: { x: 400, y: 250 },
+      data: { label: session?.tenant?.name ?? "Mi Empresa", icon: "users" as keyof typeof nodeMapIconMap, status: "healthy" as StatusType, subtitle: "CRM & Data Hub", description: "Conecta plataformas para ver tu ecosistema" },
+    }];
 
     const platformIconMap: Record<string, keyof typeof nodeMapIconMap> = {
       meta_ads: "megaphone",
@@ -2703,7 +2734,7 @@ export function NodeMapPage() {
             onPaneClick={onPaneClick}
             nodeTypes={nodeMapNodeTypes}
             fitView
-            fitViewOptions={{ padding: 0.3 }}
+            fitViewOptions={{ padding: 0.5, maxZoom: 0.85 }}
             proOptions={{ hideAttribution: true }}
             style={{ background: "#171717" }}
             defaultEdgeOptions={{ type: "smoothstep" }}
@@ -2798,6 +2829,38 @@ export function NodeMapPage() {
   );
 }
 
+// Map recommendation titles to navigation targets and detailed steps
+const REC_DETAILS: Record<string, { section: string; item: string; steps: string[] }> = {
+  "Atribuir revenue": {
+    section: "integrations", item: "Stripe",
+    steps: ["Ir a Integraciones → Stripe", "Conectar tu cuenta de Stripe", "Vincular deals a pagos para medir ROI por canal", "Recalcular Health Score para ver el impacto"],
+  },
+  "Lanzar campanas de email": {
+    section: "email", item: "Plantillas",
+    steps: ["Ir a Email → Plantillas", "Crear tu primera plantilla de email", "Disenar el contenido con el editor drag-and-drop", "Ir a Campanas → Crear campana y seleccionar tu plantilla", "Elegir segmento de contactos y enviar"],
+  },
+  "Mejorar rendimiento de ads": {
+    section: "integrations", item: "Meta Ads",
+    steps: ["Ir a Integraciones → Conectar plataformas de ads", "Conectar Meta Ads, Google Ads o TikTok", "Sincronizar datos de campanas", "Revisar metricas en Dashboard → Metricas", "Usar Recomendaciones IA para optimizar"],
+  },
+  "Conectar plataformas de publicidad": {
+    section: "integrations", item: "Meta Ads",
+    steps: ["Ir a Integraciones", "Hacer click en 'Conectar' junto a Meta Ads", "Autorizar el acceso a tu cuenta de ads", "Repetir para Google Ads y TikTok si aplica", "Los datos se sincronizaran automaticamente"],
+  },
+  "Activar canales de engagement": {
+    section: "whatsapp", item: "Conversaciones",
+    steps: ["Configurar WhatsApp Business en Integraciones", "Crear plantillas de mensajes", "Configurar respuestas automaticas con IA", "Ir a Settings → Contexto de Negocio para personalizar la IA"],
+  },
+  "Crear campanas de email": {
+    section: "email", item: "Campanas",
+    steps: ["Ir a Email → Plantillas para crear diseños", "Ir a Email → Campanas → Crear campana", "Seleccionar plantilla y segmento de contactos", "Programar o enviar inmediatamente"],
+  },
+  "Optimizar pipeline de ventas": {
+    section: "contacts", item: "Pipeline principal",
+    steps: ["Ir a Contactos → Pipeline principal", "Revisar las etapas del pipeline", "Usar 'Editar con IA' para ajustar etapas", "Crear deals y moverlos por las etapas", "Cerrar deals como ganados o perdidos"],
+  },
+};
+
 export function RecomendacionesIAPage() {
   const { data: healthScore, isLoading: hsLoading } = trpc.healthScore.getCurrent.useQuery();
   const { data: insights, isLoading: insightsLoading } = trpc.reports.getInsights.useQuery();
@@ -2808,6 +2871,57 @@ export function RecomendacionesIAPage() {
     },
   });
   const utils = trpc.useUtils();
+  const [selectedRec, setSelectedRec] = useState<{ title: string; description: string; priority: string } | null>(null);
+  const [aiSteps, setAiSteps] = useState<{ steps: string[]; section: string; item: string } | null>(null);
+  const [loadingSteps, setLoadingSteps] = useState(false);
+
+  const generateSteps = useCallback(async (rec: { title: string; description: string }) => {
+    // Check static map first
+    const staticDetail = REC_DETAILS[rec.title];
+    if (staticDetail) {
+      setAiSteps(staticDetail);
+      return;
+    }
+
+    // Generate steps dynamically with AI
+    setLoadingSteps(true);
+    try {
+      const response = await fetch("/api/ai/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "action_steps",
+          context: `Recomendacion: "${rec.title}". Descripcion: "${rec.description}". Plataforma: NodeLabz (CRM, email marketing, ads, WhatsApp, AI). Secciones disponibles: Dashboard, Contactos, Campanas, Email, WhatsApp, Social, AI Studio, Automatizaciones, Reportes, Integraciones, Settings.`,
+          language: "es",
+          tone: "professional",
+        }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const text = data.copy || data.result || "";
+        // Parse steps from AI response (numbered list)
+        const steps = text.split(/\n/).filter((l: string) => l.trim()).map((l: string) => l.replace(/^\d+[\.\)]\s*/, "").trim()).filter((l: string) => l.length > 5);
+        setAiSteps({
+          steps: steps.length > 0 ? steps.slice(0, 6) : ["Revisa tu Health Score para mas detalles", "Conecta plataformas relevantes", "Recalcula para ver el progreso"],
+          section: "dashboard",
+          item: "Health Score",
+        });
+      } else {
+        setAiSteps({
+          steps: ["Revisa tu Health Score para identificar areas de mejora", "Conecta las plataformas necesarias", "Sigue las recomendaciones paso a paso", "Recalcula regularmente para monitorear progreso"],
+          section: "dashboard",
+          item: "Health Score",
+        });
+      }
+    } catch {
+      setAiSteps({
+        steps: ["Revisa tu Health Score para identificar areas de mejora", "Conecta las plataformas necesarias", "Sigue las recomendaciones paso a paso"],
+        section: "dashboard",
+        item: "Health Score",
+      });
+    }
+    setLoadingSteps(false);
+  }, []);
 
   const isLoading = hsLoading || insightsLoading;
 
@@ -2985,6 +3099,10 @@ export function RecomendacionesIAPage() {
                   onClick={() => {
                     if (rec.action === "Ver Health Score") {
                       window.dispatchEvent(new CustomEvent("dashboard:navigate", { detail: { section: "dashboard", item: "Health Score" } }));
+                    } else {
+                      setSelectedRec(rec);
+                      setAiSteps(null);
+                      generateSteps(rec);
                     }
                   }}
                   className="flex-shrink-0 text-[11px] px-3 py-1.5 rounded-md border border-[#333] text-[#ccc] hover:border-[#3ecf8e]/40 hover:text-[#3ecf8e] transition-colors"
@@ -2994,6 +3112,62 @@ export function RecomendacionesIAPage() {
               </div>
             ))}
           </div>
+
+          {/* Detail Modal */}
+          {selectedRec && (() => {
+            const priorityColors: Record<string, string> = { high: "#ef4444", medium: "#f59e0b", low: "#3ecf8e" };
+            const pc = priorityColors[selectedRec.priority] ?? "#888";
+            return (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setSelectedRec(null)}>
+                <div className="w-full max-w-lg rounded-xl border border-[#2e2e2e] p-6" style={{ backgroundColor: "#1c1c1c" }} onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="text-[16px] font-semibold text-[#ededed]">{selectedRec.title}</h3>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-medium" style={{ color: pc, backgroundColor: `${pc}15` }}>
+                          {selectedRec.priority === "high" ? "Alta" : selectedRec.priority === "medium" ? "Media" : "Baja"}
+                        </span>
+                      </div>
+                      <p className="text-[13px] text-[#888]">{selectedRec.description}</p>
+                    </div>
+                    <button onClick={() => setSelectedRec(null)} className="text-[#666] hover:text-[#ccc] transition-colors p-1">
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  {loadingSteps ? (
+                    <div className="py-8 text-center">
+                      <Loader2 size={20} className="animate-spin text-[#3ecf8e] mx-auto mb-3" />
+                      <p className="text-[13px] text-[#888]">Generando pasos con IA...</p>
+                    </div>
+                  ) : aiSteps ? (
+                    <>
+                      <h4 className="text-[12px] text-[#888] uppercase tracking-wider mb-3 font-medium">Pasos a seguir</h4>
+                      <div className="space-y-2.5 mb-6">
+                        {aiSteps.steps.map((step, i) => (
+                          <div key={i} className="flex items-start gap-3">
+                            <span className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0" style={{ backgroundColor: "#3ecf8e20", color: "#3ecf8e" }}>
+                              {i + 1}
+                            </span>
+                            <p className="text-[13px] text-[#ccc] pt-0.5">{step}</p>
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => {
+                          setSelectedRec(null);
+                          window.dispatchEvent(new CustomEvent("dashboard:navigate", { detail: { section: aiSteps.section, item: aiSteps.item } }));
+                        }}
+                        className="w-full py-2.5 rounded-lg text-[13px] font-semibold text-black" style={{ backgroundColor: "#3ecf8e" }}
+                      >
+                        Ir a {aiSteps.item}
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })()}
         </>
       )}
     </>

@@ -88,8 +88,8 @@ const PLANS = [
   {
     id: "CRECIMIENTO",
     name: "Crecimiento",
-    price: "$79/mes",
-    priceNum: 79,
+    price: "$199/mes",
+    priceNum: 199,
     desc: "Para equipos en crecimiento",
     icon: Rocket,
     color: "#3ecf8e",
@@ -100,8 +100,8 @@ const PLANS = [
   {
     id: "PROFESIONAL",
     name: "Profesional",
-    price: "$199/mes",
-    priceNum: 199,
+    price: "$399/mes",
+    priceNum: 399,
     desc: "Para agencias profesionales",
     icon: Crown,
     color: "#6366f1",
@@ -111,8 +111,8 @@ const PLANS = [
   {
     id: "AGENCIA",
     name: "Agencia",
-    price: "$399/mes",
-    priceNum: 399,
+    price: "$799/mes",
+    priceNum: 799,
     desc: "Para agencias enterprise",
     icon: Building2,
     color: "#f59e0b",
