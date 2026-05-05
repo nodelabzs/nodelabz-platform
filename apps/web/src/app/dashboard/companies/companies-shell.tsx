@@ -94,7 +94,7 @@ function CompaniesShellInner({ userName }: { userName: string }) {
       navSourceRef.current = "url";
       setActiveItem(v);
     }
-  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Sync state → URL on click
   useEffect(() => {

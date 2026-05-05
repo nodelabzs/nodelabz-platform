@@ -47,7 +47,6 @@ export function TopNavbar({
     <header className="h-[48px] border-b border-[#2e2e2e] flex items-center justify-between px-4 flex-shrink-0" style={{ backgroundColor: '#1c1c1c' }}>
       <div className="flex items-center gap-3 text-[13px]">
         <Link href="/dashboard/org">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="NodeLabz" width={18} height={18} className="flex-shrink-0 hover:opacity-80 transition-opacity" />
         </Link>
         <span className="text-[#444]">/</span>

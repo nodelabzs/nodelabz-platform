@@ -266,7 +266,7 @@ export function HomePage() {
       const t2 = setTimeout(() => setBillingSuccess(false), 8000);
       return () => { clearTimeout(t1); clearTimeout(t2); };
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const checkoutMutation = trpc.billing.createCheckout.useMutation({
     onSuccess: (data) => { window.location.href = data.url; },
@@ -2900,7 +2900,7 @@ export function RecomendacionesIAPage() {
         const data = await response.json();
         const text = data.copy || data.result || "";
         // Parse steps from AI response (numbered list)
-        const steps = text.split(/\n/).filter((l: string) => l.trim()).map((l: string) => l.replace(/^\d+[\.\)]\s*/, "").trim()).filter((l: string) => l.length > 5);
+        const steps = text.split(/\n/).filter((l: string) => l.trim()).map((l: string) => l.replace(/^\d+[.)]\s*/, "").trim()).filter((l: string) => l.length > 5);
         setAiSteps({
           steps: steps.length > 0 ? steps.slice(0, 6) : ["Revisa tu Health Score para mas detalles", "Conecta plataformas relevantes", "Recalcula para ver el progreso"],
           section: "dashboard",

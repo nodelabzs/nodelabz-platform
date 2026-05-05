@@ -1411,7 +1411,6 @@ export function CrearPublicacionPage() {
             {generatedImageUrl ? (
               <div className="space-y-3">
                 <div className="relative rounded-lg overflow-hidden border border-[#2e2e2e]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={generatedImageUrl}
                     alt="Imagen generada con IA"
@@ -1587,7 +1586,6 @@ export function CrearPublicacionPage() {
             </div>
             <div className="mx-4 mb-3 h-40 rounded-lg flex items-center justify-center overflow-hidden" style={{ backgroundColor: "#252525" }}>
               {generatedImageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img src={generatedImageUrl} alt="Preview" className="w-full h-full object-cover" />
               ) : (
                 <Image size={28} className="text-[#444]" />

@@ -907,7 +907,6 @@ export function CreativosPage() {
               </div>
               {imageUrl && (
                 <div className="mt-2 rounded-lg overflow-hidden border border-[#2e2e2e] w-32 h-20">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={imageUrl}
                     alt="Preview"

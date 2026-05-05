@@ -77,7 +77,7 @@ export function DashboardShell({
       setActiveSection(s);
       setActiveItem(i);
     }
-  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Sync state → URL when activeSection or activeItem changes (user clicks)
   useEffect(() => {

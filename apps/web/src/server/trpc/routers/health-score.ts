@@ -233,7 +233,7 @@ Reglas:
 - Si no hay datos de campanas, recomienda conectar plataformas y lanzar campanas`;
 
   let insights: string[] = [];
-  let recommendations: Array<{ title: string; description: string; priority: string }> = [];
+  let recommendations: Array<{ title: string; description: string; priority: string }>;
 
   try {
     const aiResponse = await invokeModel({
