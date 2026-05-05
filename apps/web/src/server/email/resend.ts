@@ -14,7 +14,7 @@ export async function sendEmail(params: {
     from:
       params.from ||
       process.env.EMAIL_FROM ||
-      "NodeLabz <notifications@nodelabz.com>",
+      "NodeLabz <noreply@nodelabz.com>",
     to: params.to,
     subject: params.subject,
     html: params.html,
@@ -47,7 +47,7 @@ export async function sendBulkEmails(
       chunk.map((e) => ({
         from:
           process.env.EMAIL_FROM ||
-          "NodeLabz <notifications@nodelabz.com>",
+          "NodeLabz <noreply@nodelabz.com>",
         to: e.to,
         subject: e.subject,
         html: e.html,

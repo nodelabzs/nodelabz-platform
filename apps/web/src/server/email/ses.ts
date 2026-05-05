@@ -28,7 +28,7 @@ function getClient(): SESClient {
 }
 
 const DEFAULT_FROM =
-  process.env.EMAIL_FROM || "NodeLabz <notifications@nodelabz.com>";
+  process.env.EMAIL_FROM || "NodeLabz <noreply@nodelabz.com>";
 
 // ---------------------------------------------------------------------------
 // sendEmail – single recipient
