@@ -66,7 +66,7 @@ export const syncShopify = task({
         `https://${shop}/admin/api/2024-01/orders.json?status=any&created_at_min=${thirtyDaysAgo.toISOString()}&limit=250`;
 
       while (ordersUrl) {
-        const response = await fetch(ordersUrl, {
+        const response: Response = await fetch(ordersUrl, {
           headers: {
             "X-Shopify-Access-Token": integration.accessToken,
           },
@@ -77,16 +77,16 @@ export const syncShopify = task({
           throw new Error(`Shopify API error ${response.status}: ${errorText}`);
         }
 
-        const json = await response.json();
+        const json: { orders?: ShopifyOrder[] } = await response.json();
         const orders: ShopifyOrder[] = json.orders ?? [];
         allOrders.push(...orders);
 
         // Handle pagination via Link header
-        const linkHeader = response.headers.get("link");
+        const linkHeader: string | null = response.headers.get("link");
         ordersUrl = null;
         if (linkHeader) {
-          const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-          if (nextMatch) {
+          const nextMatch: RegExpMatchArray | null = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+          if (nextMatch?.[1]) {
             ordersUrl = nextMatch[1];
           }
         }
@@ -102,7 +102,7 @@ export const syncShopify = task({
       >();
 
       for (const order of allOrders) {
-        const dateStr = order.created_at.split("T")[0];
+        const dateStr = order.created_at.split("T")[0]!;
         const existing = dailyTotals.get(dateStr) || {
           revenue: 0,
           orderCount: 0,
@@ -163,7 +163,7 @@ export const syncShopify = task({
         `https://${shop}/admin/api/2024-01/customers.json?limit=250`;
 
       while (customersUrl) {
-        const response = await fetch(customersUrl, {
+        const response: Response = await fetch(customersUrl, {
           headers: {
             "X-Shopify-Access-Token": integration.accessToken,
           },
@@ -176,7 +176,7 @@ export const syncShopify = task({
           break;
         }
 
-        const json = await response.json();
+        const json: { customers?: ShopifyCustomer[] } = await response.json();
         const customers: ShopifyCustomer[] = json.customers ?? [];
 
         for (const customer of customers) {
@@ -195,11 +195,11 @@ export const syncShopify = task({
         }
 
         // Handle pagination via Link header
-        const linkHeader = response.headers.get("link");
+        const linkHeader: string | null = response.headers.get("link");
         customersUrl = null;
         if (linkHeader) {
-          const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-          if (nextMatch) {
+          const nextMatch: RegExpMatchArray | null = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+          if (nextMatch?.[1]) {
             customersUrl = nextMatch[1];
           }
         }

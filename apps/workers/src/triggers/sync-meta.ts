@@ -74,14 +74,14 @@ export const syncMeta = task({
         `https://graph.facebook.com/v21.0/act_${accountId}/insights?${params.toString()}`;
 
       while (url) {
-        const response = await fetch(url);
+        const response: Response = await fetch(url);
 
         if (!response.ok) {
           const errorText = await response.text();
           throw new Error(`Meta API error ${response.status}: ${errorText}`);
         }
 
-        const json = await response.json();
+        const json: { data?: MetaInsightRow[]; paging?: { next?: string } } = await response.json();
         const rows: MetaInsightRow[] = json.data ?? [];
         allRows.push(...rows);
 

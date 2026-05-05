@@ -86,7 +86,7 @@ export const aiDigest = task({
     const parts: string[] = [];
 
     if (channels.length > 0) {
-      const top = channels[0];
+      const top = channels[0]!;
       parts.push(
         `Tu mejor canal es ${top.platform} con ROAS ${top.roas.toFixed(1)}x.`
       );
@@ -102,7 +102,7 @@ export const aiDigest = task({
     parts.push(`Contactos: ${contactCount} | Deals: ${dealCount} | Win rate: ${(winRate * 100).toFixed(0)}%.`);
 
     if (channels.length > 1) {
-      const worst = channels[channels.length - 1];
+      const worst = channels[channels.length - 1]!;
       if (worst.roas < 1 && worst.spend > 0) {
         parts.push(
           `Atencion: ${worst.platform} tiene ROAS bajo (${worst.roas.toFixed(1)}x). Considera reasignar presupuesto.`
