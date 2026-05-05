@@ -89,12 +89,68 @@ export async function executeWorkflow(
     await walkNode(edge.target, {
       nodeMap,
       edgeMap,
+      workflowId,
       tenantId,
       triggerData,
       logs,
       visited,
+      delayed: false,
     });
   }
+
+  return { logs };
+}
+
+/**
+ * Resume a workflow from a pending delay step.
+ * Called by the cron job when runAt has passed.
+ */
+export async function resumeWorkflowFromStep(
+  pendingStepId: string
+): Promise<{ logs: ExecutionLog[] }> {
+  const step = await prisma.workflowPendingStep.findUnique({
+    where: { id: pendingStepId },
+    include: { workflow: true },
+  });
+
+  if (!step || step.status !== "pending") {
+    return { logs: [{ nodeId: "root", status: "skipped", message: "Pending step not found or already processed", timestamp: new Date() }] };
+  }
+
+  const workflow = step.workflow;
+  if (!workflow.isActive) {
+    await prisma.workflowPendingStep.update({ where: { id: pendingStepId }, data: { status: "cancelled" } });
+    return { logs: [{ nodeId: "root", status: "skipped", message: "Workflow deactivated", timestamp: new Date() }] };
+  }
+
+  const nodes = workflow.nodes as unknown as WorkflowNode[];
+  const edges = workflow.edges as unknown as WorkflowEdge[];
+  const nodeMap = new Map<string, WorkflowNode>();
+  for (const node of nodes) nodeMap.set(node.id, node);
+  const edgeMap = new Map<string, WorkflowEdge[]>();
+  for (const edge of edges) {
+    const existing = edgeMap.get(edge.source) ?? [];
+    existing.push(edge);
+    edgeMap.set(edge.source, existing);
+  }
+
+  const logs: ExecutionLog[] = [];
+  const visited = new Set<string>();
+  const triggerData = step.triggerData as Record<string, unknown>;
+
+  // Continue from the edges after the delay node
+  const nextEdges = edgeMap.get(step.nodeId) ?? [];
+  for (const edge of nextEdges) {
+    await walkNode(edge.target, {
+      nodeMap, edgeMap, workflowId: workflow.id, tenantId: workflow.tenantId,
+      triggerData, logs, visited, delayed: false,
+    });
+  }
+
+  await prisma.workflowPendingStep.update({
+    where: { id: pendingStepId },
+    data: { status: "completed" },
+  });
 
   return { logs };
 }
@@ -106,10 +162,12 @@ export async function executeWorkflow(
 interface WalkContext {
   nodeMap: Map<string, WorkflowNode>;
   edgeMap: Map<string, WorkflowEdge[]>;
+  workflowId: string;
   tenantId: string;
   triggerData: Record<string, unknown>;
   logs: ExecutionLog[];
   visited: Set<string>;
+  delayed: boolean;
 }
 
 async function walkNode(nodeId: string, ctx: WalkContext): Promise<void> {
@@ -144,6 +202,27 @@ async function walkNode(nodeId: string, ctx: WalkContext): Promise<void> {
       if (branchEdge) {
         await walkNode(branchEdge.target, ctx);
       }
+    } else if (node.type === "delay") {
+      // Delay node type (from visual builder) — schedule and pause
+      const delayHours = Number(node.data.delayHours ?? node.data.delay ?? 24);
+      const runAt = new Date(Date.now() + delayHours * 60 * 60 * 1000);
+
+      await prisma.workflowPendingStep.create({
+        data: {
+          workflowId: ctx.workflowId,
+          nodeId: node.id,
+          triggerData: ctx.triggerData as object,
+          runAt,
+        },
+      });
+
+      ctx.delayed = true;
+      ctx.logs.push({
+        nodeId: node.id,
+        status: "success",
+        message: `Delay scheduled: ${delayHours}h (resumes at ${runAt.toISOString()})`,
+        timestamp: new Date(),
+      });
     } else {
       // Unknown node type -- skip and continue
       const nextEdges = ctx.edgeMap.get(nodeId) ?? [];
@@ -182,14 +261,27 @@ async function executeAction(node: WorkflowNode, ctx: WalkContext): Promise<void
       break;
     }
     case "wait": {
-      // MVP: skip waits and continue immediately
+      const delayHours = Number(node.data.delayHours ?? node.data.delay ?? 24);
+      const runAt = new Date(Date.now() + delayHours * 60 * 60 * 1000);
+
+      await prisma.workflowPendingStep.create({
+        data: {
+          workflowId: ctx.workflowId,
+          nodeId: node.id,
+          triggerData: ctx.triggerData as object,
+          runAt,
+        },
+      });
+
+      ctx.delayed = true;
       ctx.logs.push({
         nodeId: node.id,
-        status: "skipped",
-        message: "Wait node skipped (MVP)",
+        status: "success",
+        message: `Delay scheduled: ${delayHours}h (resumes at ${runAt.toISOString()})`,
         timestamp: new Date(),
       });
-      break;
+      // Stop walking — cron will resume from this node's outgoing edges
+      return;
     }
     default: {
       ctx.logs.push({

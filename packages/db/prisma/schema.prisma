@@ -384,8 +384,25 @@ model Workflow {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  pendingSteps WorkflowPendingStep[]
+
   @@index([tenantId])
   @@map("workflows")
+}
+
+model WorkflowPendingStep {
+  id          String   @id @default(uuid())
+  workflowId  String
+  workflow    Workflow  @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  nodeId      String
+  triggerData Json
+  runAt       DateTime
+  status      String   @default("pending") // pending, completed, cancelled
+  createdAt   DateTime @default(now())
+
+  @@index([status, runAt])
+  @@index([workflowId])
+  @@map("workflow_pending_steps")
 }
 
 // ============================

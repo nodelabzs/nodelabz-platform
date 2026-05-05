@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@nodelabz/db";
 import { sendEmail } from "@/server/email/ses";
 import { applyMergeTags } from "@/server/email/resend";
+import { resumeWorkflowFromStep } from "@/server/workflows/engine";
 
 // ---------------------------------------------------------------------------
 // Shared processing logic (used by both cron and tRPC processNow)
@@ -149,7 +150,24 @@ export async function GET(request: NextRequest) {
       `[Process Sequences] Done: processed=${result.processed} sent=${result.sent} completed=${result.completed} errors=${result.errors}`
     );
 
-    return NextResponse.json(result);
+    // Also process pending workflow delay steps
+    let workflowStepsProcessed = 0;
+    const pendingSteps = await prisma.workflowPendingStep.findMany({
+      where: { status: "pending", runAt: { lte: new Date() } },
+    });
+    for (const step of pendingSteps) {
+      try {
+        await resumeWorkflowFromStep(step.id);
+        workflowStepsProcessed++;
+      } catch (err) {
+        console.error(`[Workflow Resume] Failed step ${step.id}:`, err instanceof Error ? err.message : err);
+      }
+    }
+    if (workflowStepsProcessed > 0) {
+      console.log(`[Workflow Resume] Processed ${workflowStepsProcessed} delayed steps`);
+    }
+
+    return NextResponse.json({ ...result, workflowStepsProcessed });
   } catch (error) {
     console.error("[Process Sequences] Error:", error);
     return NextResponse.json(
