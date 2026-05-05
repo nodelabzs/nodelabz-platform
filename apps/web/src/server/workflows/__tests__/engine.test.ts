@@ -199,7 +199,7 @@ describe("executeWorkflow", () => {
       updatedAt: new Date(),
     });
 
-    const result = await executeWorkflow("wf-6", { contactId: "c-1" });
+    await executeWorkflow("wf-6", { contactId: "c-1" });
     // Activity should be created only once (cycle prevented)
     expect(prisma.activity.create).toHaveBeenCalledTimes(1);
   });

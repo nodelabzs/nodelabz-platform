@@ -14,7 +14,6 @@ import { useIdleTimeout } from "@/hooks/use-idle-timeout";
 import type { AiSection, ChatArtifact, PlanName, WorkflowArtifact, Permissions } from "@nodelabz/shared-types";
 
 export function DashboardShell({
-  children,
   user,
   plan,
 }: {

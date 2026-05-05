@@ -4,7 +4,7 @@ import { ZodError } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { findUserBySupabaseId } from "@/server/auth/provision";
 
-export async function createTRPCContext({ req }: { req: Request }) {
+export async function createTRPCContext({ req: _req }: { req: Request }) {
   const supabase = await createClient();
   const {
     data: { user },

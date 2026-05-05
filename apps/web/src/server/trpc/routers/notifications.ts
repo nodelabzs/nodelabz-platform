@@ -25,7 +25,7 @@ export async function createAndNotify(params: {
       title: params.title,
       body: params.body,
       userId: params.userId,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       metadata: params.metadata as any,
     },
   });

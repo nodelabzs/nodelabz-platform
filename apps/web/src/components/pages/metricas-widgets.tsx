@@ -19,9 +19,6 @@ import {
   Tooltip as RechartsTooltip,
 } from "recharts";
 import {
-  Activity,
-  TrendingUp,
-  TrendingDown,
   Users,
   DollarSign,
   Target,
@@ -31,7 +28,6 @@ import {
   MessageCircle,
   Mail,
   Globe,
-  Plug,
   AlertTriangle,
   Lightbulb,
   CheckCircle2,

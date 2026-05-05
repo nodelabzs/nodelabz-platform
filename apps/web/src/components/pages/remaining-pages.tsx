@@ -936,11 +936,11 @@ export function NumeroConectadoPage() {
   useEffect(() => {
     if (document.getElementById("facebook-jssdk")) return;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     (window as any).fbAsyncInit = function () {
       const appId = process.env.NEXT_PUBLIC_WHATSAPP_APP_ID;
       if (!appId) return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       (window as any).FB.init({
         appId,
         cookie: true,
@@ -959,7 +959,7 @@ export function NumeroConectadoPage() {
   }, []);
 
   const handleEmbeddedSignup = () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const FB = (window as any).FB;
     const configId = process.env.NEXT_PUBLIC_WHATSAPP_CONFIG_ID;
 
@@ -991,7 +991,7 @@ export function NumeroConectadoPage() {
     window.addEventListener("message", handleMessage);
 
     FB.login(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       (response: any) => {
         window.removeEventListener("message", handleMessage);
 

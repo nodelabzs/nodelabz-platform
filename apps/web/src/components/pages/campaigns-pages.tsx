@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useEffect, useRef, useCallback } from "react";
-import { Plus, Search, Play, Pause, TrendingUp, BarChart3, Sparkles, Calendar, Image, ChevronLeft, ChevronRight, CheckCircle, Loader2, Video, Download, Upload, Film, Clock, AlertCircle } from "lucide-react";
+import { Plus, Play, BarChart3, Sparkles, Image, ChevronLeft, ChevronRight, CheckCircle, Loader2, Video, Download, Upload, Film, Clock, AlertCircle } from "lucide-react";
 
 function SectionHeader({ title, description, action }: { title: string; description?: string; action?: React.ReactNode }) {
   return (

@@ -59,7 +59,7 @@ const WELCOME_MESSAGE: ChatMessage = {
   timestamp: new Date(),
 };
 
-export const useChatStore = create<ChatState>((set, get) => ({
+export const useChatStore = create<ChatState>((set, _get) => ({
   messages: [WELCOME_MESSAGE],
   isStreaming: false,
   streamingContent: "",

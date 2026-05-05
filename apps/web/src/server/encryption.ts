@@ -8,7 +8,6 @@ import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12;
-const TAG_LENGTH = 16;
 
 function getKey(): Buffer | null {
   const hex = process.env.ENCRYPTION_KEY;

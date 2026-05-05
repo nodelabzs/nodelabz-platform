@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import {
   ReactFlow,
@@ -21,7 +21,6 @@ import {
   Users,
   Building2,
   Upload,
-  GitBranch,
   Handshake,
   Activity,
   Tags,
@@ -36,7 +35,6 @@ import {
   Edit3,
   Check,
   AlertTriangle,
-  FileText,
   Phone,
   Mail,
   MapPin,

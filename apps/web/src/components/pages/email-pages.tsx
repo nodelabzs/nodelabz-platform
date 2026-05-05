@@ -25,8 +25,6 @@ import {
   Eye,
   MousePointerClick,
   Send,
-  Layout,
-  Search,
   Image,
   Type,
   MousePointer,
