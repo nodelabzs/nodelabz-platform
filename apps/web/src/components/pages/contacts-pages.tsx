@@ -17,6 +17,7 @@ import {
   BackgroundVariant,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { KanbanBoard } from "@/components/ui/kanban-board";
 import {
   Users,
   Building2,
@@ -1250,9 +1251,10 @@ export function PipelinePage() {
 
   const { data: stats } = trpc.deals.getStats.useQuery();
 
-  const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
   const [aiInstruction, setAiInstruction] = useState("");
   const [aiSuccess, setAiSuccess] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
 
   const utils = trpc.useUtils();
   const aiMutation = trpc.pipeline.updateWithAI.useMutation({
@@ -1262,6 +1264,14 @@ export function PipelinePage() {
       setAiInstruction("");
       setAiSuccess("Pipeline actualizado con IA");
       setTimeout(() => setAiSuccess(null), 3000);
+    },
+  });
+
+  const updateDealMutation = trpc.deals.update.useMutation({
+    onSuccess: () => {
+      utils.deals.list.invalidate();
+      utils.deals.getStats.invalidate();
+      utils.pipeline.get.invalidate();
     },
   });
 
@@ -1284,53 +1294,6 @@ export function PipelinePage() {
         };
       });
   }, [defaultPipeline, pipelineDetail]);
-
-  const nodes: StageNodeType[] = useMemo(() => {
-    return stages.map((s, i) => ({
-      id: `stage-${s.stageId}`,
-      type: "stage",
-      position: { x: 40 + i * 280, y: 120 },
-      data: s,
-      draggable: true,
-    }));
-  }, [stages]);
-
-  const edges: Edge[] = useMemo(() => {
-    return stages.slice(0, -1).map((_, i) => ({
-      id: `e-${i}`,
-      source: `stage-${stages[i]!.stageId}`,
-      target: `stage-${stages[i + 1]!.stageId}`,
-      type: "default",
-      animated: true,
-      style: { stroke: PC.border, strokeWidth: 2 },
-      markerEnd: { type: "arrowclosed" as const, color: PC.border, width: 16, height: 16 },
-    }));
-  }, [stages]);
-
-  const [flowNodes, , onNodesChange] = useNodesState(nodes);
-  const [flowEdges, , onEdgesChange] = useEdgesState(edges);
-
-  // Update nodes when data changes
-  const displayNodes = nodes.length > 0 ? nodes : flowNodes;
-  const displayEdges = edges.length > 0 ? edges : flowEdges;
-
-  const sidebarDeals = useMemo((): PipelineDeal[] => {
-    if (!deals) return [];
-    const toDeal = (d: (typeof deals)[number]): PipelineDeal => ({
-      id: d.id,
-      title: d.title,
-      value: d.value ? Number(d.value) : 0,
-      contactName: d.contact ? `${d.contact.firstName} ${d.contact.lastName ?? ""}`.trim() : "—",
-      stageId: d.stageId,
-    });
-    const targetStage = selectedStageId ?? stages[stages.length - 2]?.stageId;
-    if (!targetStage) return deals.slice(0, 5).map(toDeal);
-    return deals.filter((d) => d.stageId === targetStage).map(toDeal);
-  }, [deals, selectedStageId, stages]);
-
-  const sidebarStage = selectedStageId
-    ? stages.find((s) => s.stageId === selectedStageId)
-    : stages[stages.length - 2];
 
   const liveSummaryStats = [
     { label: "Total Deals", value: stats ? String(stats.totalDeals) : "—" },
@@ -1418,100 +1381,30 @@ export function PipelinePage() {
         )}
       </div>
 
-      {/* ====== MAIN LAYOUT (matching Email Builder's full-height bordered container) ====== */}
-      <div className="flex overflow-hidden rounded-lg border border-[#2e2e2e]" style={{ height: "calc(100vh - 180px)" }}>
-        {/* ------ LEFT: ReactFlow Canvas ------ */}
-        <div className="flex-1 relative">
-          <ReactFlow
-            nodes={displayNodes}
-            edges={displayEdges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            nodeTypes={pipelineNodeTypes}
-            onNodeClick={(_, node) => {
-              const sid = node.id.replace("stage-", "");
-              setSelectedStageId(sid === selectedStageId ? null : sid);
-            }}
-            fitView
-            fitViewOptions={{ padding: 0.25 }}
-            proOptions={{ hideAttribution: true }}
-            minZoom={0.3}
-            maxZoom={1.5}
-            colorMode="dark"
-          >
-            <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#2a2a2a" />
-            <Controls showInteractive={false} className="!rounded-lg !border !border-[#2e2e2e] !overflow-hidden" />
-          </ReactFlow>
-        </div>
+      {/* ====== KANBAN BOARD ====== */}
+      {/* ====== KANBAN BOARD ====== */}
+      <KanbanBoard
+        stages={stages.map((s) => ({ id: s.stageId, name: s.label, color: s.color, order: stages.indexOf(s) }))}
+        cards={(deals ?? []).map((d) => ({
+          id: d.id,
+          title: d.title,
+          value: d.value ? Number(d.value) : null,
+          currency: d.currency,
+          contactName: d.contact ? `${d.contact.firstName} ${d.contact.lastName ?? ""}`.trim() : undefined,
+          company: d.contact?.company ?? undefined,
+          stageId: d.stageId,
+          probability: d.probability,
+        }))}
+        onCardMove={(cardId, _fromStageId, toStageId) => {
+          updateDealMutation.mutate({ dealId: cardId, stageId: toStageId });
+        }}
+        onCardClick={(card) => setSelectedDealId(card.id)}
+        onAddCard={() => setShowCreate(true)}
+        loading={!deals}
+      />
 
-        {/* ------ RIGHT: Deals Sidebar ------ */}
-        <aside className="flex w-[240px] shrink-0 flex-col border-l border-[#2e2e2e] bg-[#1c1c1c]">
-          {/* Sidebar header */}
-          <div className="px-4 py-3 border-b border-[#2e2e2e]">
-            <h2 className="text-xs font-semibold uppercase tracking-widest text-[#666] mb-2">
-              {sidebarStage?.label ?? "Pipeline"}
-            </h2>
-            <div className="flex items-baseline gap-2">
-              <span className="text-[18px] font-bold text-[#ededed]">{sidebarDeals.length}</span>
-              <span className="text-[11px] text-[#666]">
-                deal{sidebarDeals.length !== 1 ? "s" : ""}
-                {sidebarDeals.length > 0 && ` · $${sidebarDeals.reduce((s, d) => s + d.value, 0).toLocaleString()}`}
-              </span>
-            </div>
-          </div>
-
-          {/* Stage filter chips */}
-          <div className="px-4 py-2.5 border-b border-[#2e2e2e] flex gap-1.5 flex-wrap">
-            {stages.map((s) => (
-              <button
-                key={s.stageId}
-                onClick={() => setSelectedStageId(s.stageId === selectedStageId ? null : s.stageId)}
-                className="text-[10px] px-2 py-1 rounded-md border transition-colors cursor-pointer"
-                style={{
-                  borderColor: s.stageId === selectedStageId ? s.color : "#2e2e2e",
-                  color: s.stageId === selectedStageId ? s.color : "#888",
-                  background: s.stageId === selectedStageId ? s.color + "15" : "transparent",
-                }}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Deal list */}
-          <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
-            {sidebarDeals.length === 0 ? (
-              <div className="flex-1 flex items-center justify-center">
-                <p className="text-[12px] text-[#555] text-center">Sin deals en esta etapa</p>
-              </div>
-            ) : (
-              sidebarDeals.map((deal) => (
-                <div
-                  key={deal.id}
-                  className="rounded-lg border border-[#2e2e2e] p-3 hover:border-[#3ecf8e]/30 transition-colors cursor-pointer"
-                  style={{ background: "#232323" }}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div
-                      className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
-                      style={{ background: PC.purple }}
-                    >
-                      {deal.contactName.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[12px] font-medium text-[#ededed] truncate">{deal.title}</p>
-                      <p className="text-[10px] text-[#666] truncate">{deal.contactName}</p>
-                    </div>
-                    <span className="text-[11px] font-semibold text-[#3ecf8e] shrink-0">
-                      ${deal.value.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </aside>
-      </div>
+      <CreateDealModal open={showCreate} onClose={() => setShowCreate(false)} />
+      {selectedDealId && <DealDetailPanel dealId={selectedDealId} onClose={() => setSelectedDealId(null)} />}
     </>
   );
 }
