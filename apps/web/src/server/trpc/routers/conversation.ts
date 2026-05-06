@@ -66,7 +66,7 @@ export const conversationRouter = router({
           conversationId: input.conversationId,
           role: input.role,
           content: input.content,
-          metadata: input.metadata || undefined,
+          metadata: input.metadata ? JSON.parse(JSON.stringify(input.metadata)) : undefined,
         },
       });
 

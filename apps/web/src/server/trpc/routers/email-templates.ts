@@ -121,7 +121,7 @@ export const emailTemplatesRouter = router({
           tenantId: ctx.effectiveTenantId,
           name: input.name,
           subject: input.subject,
-          content: input.content,
+          content: JSON.parse(JSON.stringify(input.content)),
           html,
         },
       });

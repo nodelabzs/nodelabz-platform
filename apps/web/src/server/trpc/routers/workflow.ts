@@ -5,25 +5,11 @@ import { TRPCError } from "@trpc/server";
 
 // ── Workflow node/edge schemas ────────────────────────────────────────────
 
-const workflowNodeSchema = z.object({
-  id: z.string().min(1),
-  type: z.enum(["trigger", "action", "condition", "delay"]),
-  position: z.object({ x: z.number(), y: z.number() }).optional(),
-  data: z.record(z.unknown()).default({}),
-});
-
-const workflowEdgeSchema = z.object({
-  id: z.string().min(1),
-  source: z.string().min(1),
-  target: z.string().min(1),
-  sourceHandle: z.string().nullish(),
-  label: z.string().optional(),
-});
-
-const triggerSchema = z.object({
-  type: z.string().optional(),
-  config: z.record(z.unknown()).optional(),
-}).passthrough();
+// Workflow nodes/edges are flexible JSON objects from the visual builder.
+// We validate they're arrays of objects with reasonable limits.
+const workflowNodeSchema = z.record(z.unknown());
+const workflowEdgeSchema = z.record(z.unknown());
+const triggerSchema = z.record(z.unknown());
 
 export const workflowRouter = router({
   list: tenantProcedure.query(async ({ ctx }) => {
@@ -59,9 +45,9 @@ export const workflowRouter = router({
         data: {
           tenantId: ctx.effectiveTenantId,
           name: input.name,
-          trigger: input.trigger as object,
-          nodes: input.nodes as object[],
-          edges: input.edges as object[],
+          trigger: JSON.parse(JSON.stringify(input.trigger)),
+          nodes: JSON.parse(JSON.stringify(input.nodes)),
+          edges: JSON.parse(JSON.stringify(input.edges)),
           isActive: input.isActive ?? false,
         },
       });
@@ -87,9 +73,9 @@ export const workflowRouter = router({
 
       const data: Record<string, unknown> = {};
       if (input.name !== undefined) data.name = input.name;
-      if (input.trigger !== undefined) data.trigger = input.trigger;
-      if (input.nodes !== undefined) data.nodes = input.nodes;
-      if (input.edges !== undefined) data.edges = input.edges;
+      if (input.trigger !== undefined) data.trigger = JSON.parse(JSON.stringify(input.trigger));
+      if (input.nodes !== undefined) data.nodes = JSON.parse(JSON.stringify(input.nodes));
+      if (input.edges !== undefined) data.edges = JSON.parse(JSON.stringify(input.edges));
       if (input.isActive !== undefined) data.isActive = input.isActive;
 
       return prisma.workflow.update({
