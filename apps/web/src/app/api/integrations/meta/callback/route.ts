@@ -40,11 +40,16 @@ export async function GET(request: NextRequest) {
     const { accessToken: longLivedToken, expiresIn } =
       await exchangeForLongLivedToken(shortLivedToken);
 
-    // 4. Get ad accounts
-    const adAccounts = await getAdAccounts(longLivedToken);
+    // 4. Get ad accounts (graceful fallback if Meta API is slow)
+    let adAccounts: Array<{ id: string; name: string; accountId: string }> = [];
+    try {
+      adAccounts = await getAdAccounts(longLivedToken);
+    } catch (err) {
+      console.warn("[Meta OAuth] Could not fetch ad accounts:", err instanceof Error ? err.message : err);
+    }
 
     // 5. Store integration in database
-    const expiresAt = new Date(Date.now() + expiresIn * 1000);
+    const expiresAt = new Date(Date.now() + (expiresIn || 5184000) * 1000);
     const primaryAccountId = adAccounts[0]?.accountId || null;
 
     const encryptedToken = encrypt(longLivedToken);

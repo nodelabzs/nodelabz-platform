@@ -36,9 +36,7 @@ export async function GET(request: NextRequest) {
     const properties = await getGA4Properties(accessToken);
 
     // 4. Store integration in database
-    const expiresAt = expiresIn
-      ? new Date(Date.now() + expiresIn * 1000)
-      : new Date(Date.now() + 3600 * 1000); // default 1 hour
+    const expiresAt = new Date(Date.now() + (expiresIn ?? 3600) * 1000);
     const primaryPropertyId = properties[0]?.propertyId || "";
 
     await prisma.integration.upsert({

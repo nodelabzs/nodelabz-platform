@@ -112,7 +112,7 @@ export async function POST(req: Request) {
         },
         body: JSON.stringify({
           messaging_product: "whatsapp",
-          pin: "000000",
+          pin: String(Math.floor(100000 + Math.random() * 900000)),
         }),
       }
     );

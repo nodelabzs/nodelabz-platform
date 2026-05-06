@@ -24,23 +24,15 @@ export async function GET(request: NextRequest) {
   // Always return the pixel, even if params are missing
   if (campaignId && email) {
     try {
-      const campaign = await prisma.emailCampaign.findUnique({
-        where: { id: campaignId },
-        select: { stats: true },
-      });
-
-      if (campaign) {
-        const stats = (campaign.stats as Record<string, number>) || {};
-        await prisma.emailCampaign.update({
-          where: { id: campaignId },
-          data: {
-            stats: {
-              ...stats,
-              opened: (stats.opened || 0) + 1,
-            },
-          },
-        });
-      }
+      await prisma.$executeRaw`
+        UPDATE "email_campaigns"
+        SET stats = jsonb_set(
+          COALESCE(stats, '{}')::jsonb,
+          '{opened}',
+          (COALESCE((stats->>'opened')::int, 0) + 1)::text::jsonb
+        )
+        WHERE id = ${campaignId}
+      `;
     } catch (error) {
       console.error("[Track Open] Error updating stats:", error);
     }

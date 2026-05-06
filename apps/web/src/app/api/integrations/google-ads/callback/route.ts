@@ -42,17 +42,17 @@ export async function GET(request: NextRequest) {
     }
 
     // 4. Store integration in database
-    const expiresAt = expiresIn
-      ? new Date(Date.now() + expiresIn * 1000)
-      : new Date(Date.now() + 3600 * 1000); // default 1 hour
-    const primaryCustomerId = customerIds[0] || "pending";
+    // Google access tokens expire in ~1 hour but refresh tokens are long-lived.
+    // Store the actual expiry so the sync function refreshes when needed.
+    const expiresAt = new Date(Date.now() + (expiresIn ?? 3600) * 1000);
+    const primaryCustomerId = customerIds[0] || null;
 
     await prisma.integration.upsert({
       where: {
         tenantId_platform_accountId: {
           tenantId: oauthState.tenantId,
           platform: "google_ads",
-          accountId: primaryCustomerId,
+          accountId: primaryCustomerId || "",
         },
       },
       update: {

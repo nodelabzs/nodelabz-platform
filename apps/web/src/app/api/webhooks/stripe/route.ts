@@ -120,8 +120,38 @@ export async function POST(req: Request) {
         break;
       }
 
+      case "invoice.payment_failed": {
+        const invoice = event.data.object as Stripe.Invoice;
+        const customerId =
+          typeof invoice.customer === "string"
+            ? invoice.customer
+            : invoice.customer?.id;
+
+        if (customerId) {
+          // Log the failed payment — don't downgrade immediately
+          // (Stripe retries failed payments automatically)
+          console.warn(`[Stripe] Payment failed for customer ${customerId}`);
+
+          // Notify the tenant
+          const tenant = await prisma.tenant.findFirst({
+            where: { stripeCustomerId: customerId },
+          });
+          if (tenant) {
+            await prisma.notification.create({
+              data: {
+                tenantId: tenant.id,
+                type: "payment_failed",
+                title: "Pago fallido",
+                body: "Tu pago no se pudo procesar. Actualiza tu metodo de pago para evitar interrupciones.",
+                metadata: { invoiceId: invoice.id },
+              },
+            });
+          }
+        }
+        break;
+      }
+
       default:
-        // Unhandled event type — ignore silently
         break;
     }
   } catch (err) {
