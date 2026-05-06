@@ -7,6 +7,7 @@ import { AiChatPanel } from "@/components/ui/ai-chat-panel";
 import { WorkflowEditor } from "@/components/ui/workflow/workflow-editor";
 import { ContentRouter, getDefaultItem } from "@/components/pages/content-router";
 import { SuperAdminBanner } from "@/components/ui/super-admin-banner";
+import { CommandPalette } from "@/components/ui/command-palette";
 import { useChatStore } from "@/stores/chat-store";
 import { trpc } from "@/lib/trpc";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
@@ -218,6 +219,9 @@ export function DashboardShell({
           </div>
         )}
       </div>
+
+      {/* Command Palette (Cmd+K) */}
+      <CommandPalette />
 
       {/* Inactivity warning modal */}
       {showWarning && (

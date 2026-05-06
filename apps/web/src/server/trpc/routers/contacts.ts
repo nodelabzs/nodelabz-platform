@@ -232,10 +232,17 @@ export const contactsRouter = router({
       if (!contact) throw new TRPCError({ code: "NOT_FOUND" });
 
       const { contactId, ...updateData } = input;
-      return prisma.contact.update({
+      const updated = await prisma.contact.update({
         where: { id: contactId },
         data: updateData as object,
       });
+
+      void fireTrigger(ctx.effectiveTenantId, "contact.updated", {
+        contactId,
+        ...updateData,
+      });
+
+      return updated;
     }),
 
   delete: tenantProcedure
@@ -248,6 +255,11 @@ export const contactsRouter = router({
       if (!contact) throw new TRPCError({ code: "NOT_FOUND" });
 
       await prisma.contact.delete({ where: { id: input.contactId } });
+
+      void fireTrigger(ctx.effectiveTenantId, "contact.deleted", {
+        contactId: input.contactId,
+      });
+
       return { success: true };
     }),
 

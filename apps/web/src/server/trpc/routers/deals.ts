@@ -135,6 +135,13 @@ export const dealsRouter = router({
         },
       });
 
+      // Always fire deal.updated trigger
+      void fireTrigger(ctx.effectiveTenantId, "deal.updated", {
+        dealId: existing.id,
+        contactId: existing.contactId,
+        changes: updateFields,
+      });
+
       // If stage changed, create an activity and fire trigger
       if (input.stageId && input.stageId !== existing.stageId) {
         await prisma.activity.create({

@@ -18,6 +18,9 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { KanbanBoard } from "@/components/ui/kanban-board";
+import { ContactDetailPanel, DealDetailPanel } from "@/components/ui/record-detail";
+import { FilterBar, type FilterState } from "@/components/ui/filter-bar";
+import Fuse from "fuse.js";
 import {
   Users,
   Building2,
@@ -248,205 +251,8 @@ function CreateContactModal({ open, onClose }: { open: boolean; onClose: () => v
 }
 
 /* ================================================================== */
-/*  Contact Detail Slide-Over                                          */
+/*  Contact & Deal detail panels are now in ui/record-detail.tsx       */
 /* ================================================================== */
-
-function ContactDetailPanel({ contactId, onClose }: { contactId: string; onClose: () => void }) {
-  const { data: contact, isLoading } = trpc.contacts.get.useQuery({ contactId });
-  const [editing, setEditing] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-
-  const [editFirstName, setEditFirstName] = useState("");
-  const [editLastName, setEditLastName] = useState("");
-  const [editEmail, setEditEmail] = useState("");
-  const [editPhone, setEditPhone] = useState("");
-  const [editCompany, setEditCompany] = useState("");
-
-  const utils = trpc.useUtils();
-
-  const updateMutation = trpc.contacts.update.useMutation({
-    onSuccess: () => {
-      utils.contacts.get.invalidate({ contactId });
-      utils.contacts.list.invalidate();
-      setEditing(false);
-    },
-  });
-
-  const deleteMutation = trpc.contacts.delete.useMutation({
-    onSuccess: () => {
-      utils.contacts.list.invalidate();
-      onClose();
-    },
-  });
-
-  function startEditing() {
-    if (!contact) return;
-    setEditFirstName(contact.firstName);
-    setEditLastName(contact.lastName ?? "");
-    setEditEmail(contact.email ?? "");
-    setEditPhone(contact.phone ?? "");
-    setEditCompany(contact.company ?? "");
-    setEditing(true);
-  }
-
-  function handleSave() {
-    updateMutation.mutate({
-      contactId,
-      firstName: editFirstName.trim(),
-      lastName: editLastName.trim() || undefined,
-      email: editEmail.trim() || undefined,
-      phone: editPhone.trim() || undefined,
-      company: editCompany.trim() || undefined,
-    });
-  }
-
-  if (isLoading) {
-    return (
-      <SlideOver open title="Cargando..." onClose={onClose}>
-        <div className="space-y-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-8 rounded bg-[#2a2a2a] animate-pulse" />
-          ))}
-        </div>
-      </SlideOver>
-    );
-  }
-
-  if (!contact) {
-    return (
-      <SlideOver open title="No encontrado" onClose={onClose}>
-        <p className="text-[13px] text-[#888]">El contacto no fue encontrado.</p>
-      </SlideOver>
-    );
-  }
-
-  return (
-    <SlideOver open title={`${contact.firstName} ${contact.lastName ?? ""}`} onClose={onClose}>
-      {/* Actions */}
-      <div className="flex gap-2 mb-5">
-        {!editing ? (
-          <>
-            <SecondaryButton onClick={startEditing}><Edit3 size={13} /> Editar</SecondaryButton>
-            <DangerButton onClick={() => setConfirmDelete(true)} disabled={deleteMutation.isPending}>
-              <Trash2 size={13} /> Eliminar
-            </DangerButton>
-          </>
-        ) : (
-          <>
-            <PrimaryButton onClick={handleSave} disabled={updateMutation.isPending}>
-              <Check size={13} /> {updateMutation.isPending ? "Guardando..." : "Guardar"}
-            </PrimaryButton>
-            <SecondaryButton onClick={() => setEditing(false)}>Cancelar</SecondaryButton>
-          </>
-        )}
-      </div>
-
-      {/* Delete Confirmation */}
-      {confirmDelete && (
-        <div className="rounded-lg border border-red-500/30 p-4 mb-5" style={{ backgroundColor: "rgba(239,68,68,0.08)" }}>
-          <p className="text-[13px] text-red-400 mb-3 flex items-center gap-2">
-            <AlertTriangle size={14} /> Estas seguro? Se eliminara permanentemente.
-          </p>
-          <div className="flex gap-2">
-            <DangerButton onClick={() => deleteMutation.mutate({ contactId })} disabled={deleteMutation.isPending}>
-              {deleteMutation.isPending ? "Eliminando..." : "Si, eliminar"}
-            </DangerButton>
-            <SecondaryButton onClick={() => setConfirmDelete(false)}>Cancelar</SecondaryButton>
-          </div>
-        </div>
-      )}
-
-      {/* Contact Info */}
-      <div className="space-y-4">
-        {editing ? (
-          <>
-            <div className="grid grid-cols-2 gap-3">
-              <FormField label="Nombre"><Input value={editFirstName} onChange={setEditFirstName} /></FormField>
-              <FormField label="Apellido"><Input value={editLastName} onChange={setEditLastName} /></FormField>
-            </div>
-            <FormField label="Email"><Input value={editEmail} onChange={setEditEmail} type="email" /></FormField>
-            <FormField label="Telefono"><Input value={editPhone} onChange={setEditPhone} /></FormField>
-            <FormField label="Empresa"><Input value={editCompany} onChange={setEditCompany} /></FormField>
-          </>
-        ) : (
-          <div className="rounded-lg border border-[#2e2e2e] p-4 space-y-3" style={{ backgroundColor: "#1e1e1e" }}>
-            {contact.email && (
-              <div className="flex items-center gap-2 text-[13px]">
-                <Mail size={13} className="text-[#666]" />
-                <span className="text-[#ccc]">{contact.email}</span>
-              </div>
-            )}
-            {contact.phone && (
-              <div className="flex items-center gap-2 text-[13px]">
-                <Phone size={13} className="text-[#666]" />
-                <span className="text-[#ccc]">{contact.phone}</span>
-              </div>
-            )}
-            {contact.company && (
-              <div className="flex items-center gap-2 text-[13px]">
-                <Building2 size={13} className="text-[#666]" />
-                <span className="text-[#ccc]">{contact.company}</span>
-              </div>
-            )}
-            {contact.source && (
-              <div className="flex items-center gap-2 text-[13px]">
-                <MapPin size={13} className="text-[#666]" />
-                <span className="text-[#888]">Fuente: {contact.source}</span>
-              </div>
-            )}
-            <div className="flex items-center gap-2">
-              <Badge text={contact.scoreLabel} color={LABEL_COLORS[contact.scoreLabel] ?? "#888"} />
-              <span className="text-[11px] text-[#888]">Score: {contact.score}</span>
-            </div>
-            {contact.tags.length > 0 && (
-              <div className="flex gap-1 flex-wrap pt-1">
-                {contact.tags.map((tag) => (
-                  <Badge key={tag} text={tag} color="#6366f1" />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Deals */}
-        {contact.deals && contact.deals.length > 0 && (
-          <div>
-            <h3 className="text-[13px] font-medium text-[#ededed] mb-2">Deals ({contact.deals.length})</h3>
-            <div className="space-y-2">
-              {contact.deals.map((deal) => (
-                <div key={deal.id} className="rounded-lg border border-[#2e2e2e] p-3 flex items-center justify-between" style={{ backgroundColor: "#1e1e1e" }}>
-                  <div>
-                    <p className="text-[13px] text-[#ededed]">{deal.title}</p>
-                    <p className="text-[11px] text-[#888]">{deal.stageId}</p>
-                  </div>
-                  <span className="text-[13px] font-medium text-[#3ecf8e]">
-                    ${deal.value ? Number(deal.value).toLocaleString() : "0"}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Activities */}
-        {contact.activities && contact.activities.length > 0 && (
-          <div>
-            <h3 className="text-[13px] font-medium text-[#ededed] mb-2">Actividades recientes</h3>
-            <div className="space-y-1.5">
-              {contact.activities.slice(0, 10).map((a) => (
-                <div key={a.id} className="flex items-center gap-2 py-1.5 px-3 rounded" style={{ backgroundColor: "#1e1e1e" }}>
-                  <Activity size={12} className="text-[#666] flex-shrink-0" />
-                  <Badge text={a.type.replace(/_/g, " ")} color="#6366f1" />
-                  {a.subject && <span className="text-[12px] text-[#888] truncate">{a.subject}</span>}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </SlideOver>
-  );
-}
 
 /* ================================================================== */
 /*  Todos los Contactos — Full CRUD                                    */
@@ -455,20 +261,53 @@ function ContactDetailPanel({ contactId, onClose }: { contactId: string; onClose
 export function TodosContactosPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [scoreFilter, setScoreFilter] = useState<string | undefined>();
+  const [filters, setFilters] = useState<FilterState>({});
   const [showCreate, setShowCreate] = useState(false);
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
+  const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
+
+  // Listen for command palette events
+  useEffect(() => {
+    const handleCreateContact = () => setShowCreate(true);
+    const handleOpenContact = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { contactId: string };
+      if (detail?.contactId) setSelectedContactId(detail.contactId);
+    };
+    window.addEventListener("command:create-contact", handleCreateContact);
+    window.addEventListener("command:open-contact", handleOpenContact);
+    return () => {
+      window.removeEventListener("command:create-contact", handleCreateContact);
+      window.removeEventListener("command:open-contact", handleOpenContact);
+    };
+  }, []);
 
   const { data, isLoading } = trpc.contacts.list.useQuery({
     page,
     limit: 20,
     search: search || undefined,
-    scoreLabel: scoreFilter as "HOT" | "WARM" | "COLD" | undefined,
+    scoreLabel: filters.scoreLabel,
+    tags: filters.tags,
+    filters: {
+      source: filters.source,
+      company: filters.company,
+      hasEmail: filters.hasEmail,
+      hasPhone: filters.hasPhone,
+      createdAfter: filters.createdAfter ? new Date(filters.createdAfter) : undefined,
+      createdBefore: filters.createdBefore ? new Date(filters.createdBefore) : undefined,
+    },
   });
+
+  const { data: filterCounts } = trpc.contacts.getFilterCounts.useQuery();
+  const { data: tagList } = trpc.contacts.listTags.useQuery();
 
   const contacts = data?.contacts ?? [];
   const total = data?.total ?? 0;
   const totalPages = data?.totalPages ?? 1;
+
+  function handleFiltersChange(newFilters: FilterState) {
+    setFilters(newFilters);
+    setPage(1);
+  }
 
   return (
     <>
@@ -476,18 +315,23 @@ export function TodosContactosPage() {
         title="Todos los Contactos"
         description={`${total} contactos en tu base de datos`}
         action={
-          <button
-            onClick={() => setShowCreate(true)}
-            className="flex items-center gap-1.5 text-[12px] text-black px-3 py-1.5 rounded font-medium"
-            style={{ backgroundColor: "#3ecf8e" }}
-          >
-            <Plus size={14} />
-            Agregar contacto
-          </button>
+          <div className="flex items-center gap-2">
+            <kbd className="hidden md:inline text-[10px] px-1.5 py-0.5 rounded border border-[#333] text-[#666] bg-[#222]">⌘K</kbd>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="flex items-center gap-1.5 text-[12px] text-black px-3 py-1.5 rounded font-medium"
+              style={{ backgroundColor: "#3ecf8e" }}
+            >
+              <Plus size={14} />
+              Agregar contacto
+            </button>
+          </div>
         }
       />
-      <div className="flex items-center gap-2 mb-4">
-        <div className="flex items-center gap-2 flex-1 h-[36px] px-3 rounded-lg border border-[#333]" style={{ backgroundColor: "#222" }}>
+
+      {/* Search + Filter Bar */}
+      <div className="space-y-3 mb-4">
+        <div className="flex items-center gap-2 h-[36px] px-3 rounded-lg border border-[#333]" style={{ backgroundColor: "#222" }}>
           <Search size={14} className="text-[#666]" />
           <input
             placeholder="Buscar contactos..."
@@ -495,31 +339,18 @@ export function TodosContactosPage() {
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           />
+          {search && (
+            <button onClick={() => setSearch("")} className="text-[#666] hover:text-[#ccc]">
+              <X size={14} />
+            </button>
+          )}
         </div>
-        {(["HOT", "WARM", "COLD"] as const).map((label) => (
-          <button
-            key={label}
-            onClick={() => { setScoreFilter(scoreFilter === label ? undefined : label); setPage(1); }}
-            className="text-[12px] px-3 py-2 rounded border transition-colors"
-            style={{
-              borderColor: scoreFilter === label ? LABEL_COLORS[label] : "#333",
-              color: scoreFilter === label ? LABEL_COLORS[label] : "#ccc",
-              backgroundColor: scoreFilter === label ? LABEL_COLORS[label] + "15" : "transparent",
-            }}
-          >
-            {label}
-          </button>
-        ))}
-        <button
-          onClick={() => { setScoreFilter(undefined); setPage(1); }}
-          className="text-[12px] px-3 py-2 rounded border transition-colors"
-          style={{
-            borderColor: !scoreFilter ? "#3ecf8e" : "#333",
-            color: !scoreFilter ? "#3ecf8e" : "#ccc",
-          }}
-        >
-          All
-        </button>
+        <FilterBar
+          filters={filters}
+          onFiltersChange={handleFiltersChange}
+          sources={filterCounts?.bySource}
+          tags={tagList ?? []}
+        />
       </div>
 
       {isLoading ? (
@@ -625,7 +456,23 @@ export function TodosContactosPage() {
 
       {/* Detail Panel */}
       {selectedContactId && (
-        <ContactDetailPanel contactId={selectedContactId} onClose={() => setSelectedContactId(null)} />
+        <ContactDetailPanel
+          contactId={selectedContactId}
+          onClose={() => setSelectedContactId(null)}
+          onOpenDeal={(dealId) => setSelectedDealId(dealId)}
+        />
+      )}
+
+      {/* Deal Detail Panel */}
+      {selectedDealId && (
+        <DealDetailPanel
+          dealId={selectedDealId}
+          onClose={() => setSelectedDealId(null)}
+          onOpenContact={(contactId) => {
+            setSelectedDealId(null);
+            setSelectedContactId(contactId);
+          }}
+        />
       )}
     </>
   );
@@ -801,7 +648,10 @@ export function EmpresasPage() {
 
       {/* Contact Detail Panel */}
       {selectedContactId && (
-        <ContactDetailPanel contactId={selectedContactId} onClose={() => setSelectedContactId(null)} />
+        <ContactDetailPanel
+          contactId={selectedContactId}
+          onClose={() => setSelectedContactId(null)}
+        />
       )}
     </>
   );
@@ -830,23 +680,26 @@ export function ImportarContactosPage() {
       setPreview(result.preview);
       setTotalRows(result.totalRows);
 
-      // Auto-map common column names
+      // Auto-map columns using Fuse.js fuzzy matching
+      const fieldAliases = [
+        { field: "firstName", aliases: ["firstname", "first_name", "nombre", "first name", "name", "primer nombre"] },
+        { field: "lastName", aliases: ["lastname", "last_name", "apellido", "last name", "surname", "segundo nombre"] },
+        { field: "email", aliases: ["email", "correo", "e-mail", "mail", "correo electronico", "email address"] },
+        { field: "phone", aliases: ["phone", "telefono", "tel", "mobile", "celular", "phone number", "numero"] },
+        { field: "company", aliases: ["company", "empresa", "organization", "org", "compania", "company name", "organizacion"] },
+        { field: "source", aliases: ["source", "fuente", "origen", "lead source", "canal"] },
+      ];
+      const fuseItems = fieldAliases.flatMap((f) =>
+        f.aliases.map((alias) => ({ alias, field: f.field }))
+      );
+      const fuse = new Fuse(fuseItems, { keys: ["alias"], threshold: 0.4 });
       const autoMapping: Record<string, string> = {};
-      const fieldMap: Record<string, string[]> = {
-        firstName: ["firstname", "first_name", "nombre", "first name", "name"],
-        lastName: ["lastname", "last_name", "apellido", "last name", "surname"],
-        email: ["email", "correo", "e-mail", "mail"],
-        phone: ["phone", "telefono", "tel", "mobile", "celular"],
-        company: ["company", "empresa", "organization", "org", "compania"],
-        source: ["source", "fuente", "origen"],
-      };
+      const usedFields = new Set<string>();
       for (const col of result.columns) {
-        const lower = col.toLowerCase().trim();
-        for (const [field, aliases] of Object.entries(fieldMap)) {
-          if (aliases.includes(lower)) {
-            autoMapping[col] = field;
-            break;
-          }
+        const matches = fuse.search(col.toLowerCase().trim());
+        if (matches.length > 0 && !usedFields.has(matches[0]!.item.field)) {
+          autoMapping[col] = matches[0]!.item.field;
+          usedFields.add(matches[0]!.item.field);
         }
       }
       setFieldMapping(autoMapping);
@@ -958,54 +811,92 @@ export function ImportarContactosPage() {
             </div>
 
             <h3 className="text-[12px] font-medium text-[#ededed] mb-2">Mapeo de columnas</h3>
+            <p className="text-[10px] text-[#888] mb-2">Columnas mapeadas automaticamente con coincidencia difusa. Ajusta manualmente si es necesario.</p>
             <div className="space-y-2">
-              {columns.map((col) => (
-                <div key={col} className="flex items-center gap-3">
-                  <span className="text-[12px] text-[#ccc] w-36 truncate">{col}</span>
-                  <ChevronRight size={12} className="text-[#555]" />
-                  <select
-                    value={fieldMapping[col] ?? ""}
-                    onChange={(e) => setFieldMapping({ ...fieldMapping, [col]: e.target.value })}
-                    className="flex-1 h-[32px] px-2 rounded border border-[#333] bg-[#222] text-[12px] text-[#ededed] outline-none"
-                  >
-                    <option value="">— Ignorar —</option>
-                    {crmFields.map((f) => (
-                      <option key={f} value={f}>{f}</option>
-                    ))}
-                  </select>
-                </div>
-              ))}
+              {columns.map((col) => {
+                const mapped = fieldMapping[col];
+                return (
+                  <div key={col} className="flex items-center gap-3">
+                    <span className="text-[12px] text-[#ccc] w-36 truncate" title={col}>{col}</span>
+                    <ChevronRight size={12} className="text-[#555]" />
+                    <select
+                      value={mapped ?? ""}
+                      onChange={(e) => setFieldMapping({ ...fieldMapping, [col]: e.target.value })}
+                      className="flex-1 h-[32px] px-2 rounded border text-[12px] text-[#ededed] outline-none"
+                      style={{
+                        backgroundColor: "#222",
+                        borderColor: mapped ? "#3ecf8e40" : "#333",
+                      }}
+                    >
+                      <option value="">— Ignorar —</option>
+                      {crmFields.map((f) => (
+                        <option key={f} value={f}>{f}</option>
+                      ))}
+                    </select>
+                    {mapped && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#3ecf8e]/15 text-[#3ecf8e]">auto</span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          {/* Preview */}
-          {preview.length > 0 && (
-            <div className="rounded-lg border border-[#2e2e2e] overflow-hidden" style={{ backgroundColor: "#1e1e1e" }}>
-              <div className="px-4 py-2 border-b border-[#2e2e2e]">
-                <p className="text-[11px] text-[#888]">Vista previa (primeras {preview.length} filas)</p>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr>
-                      {columns.map((col) => (
-                        <th key={col} className="text-left text-[10px] uppercase tracking-wider text-[#888] font-medium px-3 py-2 border-b border-[#2e2e2e]">{col}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {preview.map((row, i) => (
-                      <tr key={i} className="border-b border-[#2e2e2e] last:border-0">
+          {/* Preview with validation */}
+          {preview.length > 0 && (() => {
+            const emailCol = Object.entries(fieldMapping).find(([, f]) => f === "email")?.[0];
+            const firstNameCol = Object.entries(fieldMapping).find(([, f]) => f === "firstName")?.[0];
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return (
+              <div className="rounded-lg border border-[#2e2e2e] overflow-hidden" style={{ backgroundColor: "#1e1e1e" }}>
+                <div className="px-4 py-2 border-b border-[#2e2e2e]">
+                  <p className="text-[11px] text-[#888]">Vista previa con validacion (primeras {preview.length} filas)</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr>
                         {columns.map((col) => (
-                          <td key={col} className="px-3 py-2 text-[12px] text-[#ccc] truncate max-w-[150px]">{row[col] ?? ""}</td>
+                          <th
+                            key={col}
+                            className="text-left text-[10px] uppercase tracking-wider font-medium px-3 py-2 border-b border-[#2e2e2e]"
+                            style={{ color: fieldMapping[col] ? "#3ecf8e" : "#888" }}
+                          >
+                            {col}
+                            {fieldMapping[col] && <span className="ml-1 text-[8px] opacity-60">→ {fieldMapping[col]}</span>}
+                          </th>
                         ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {preview.map((row, i) => (
+                        <tr key={i} className="border-b border-[#2e2e2e] last:border-0">
+                          {columns.map((col) => {
+                            const val = row[col] ?? "";
+                            const isFirstNameEmpty = col === firstNameCol && !val.trim();
+                            const isInvalidEmail = col === emailCol && val.trim() && !emailRegex.test(val.trim());
+                            return (
+                              <td
+                                key={col}
+                                className="px-3 py-2 text-[12px] truncate max-w-[150px]"
+                                style={{
+                                  color: isFirstNameEmpty ? "#ef4444" : isInvalidEmail ? "#f59e0b" : "#ccc",
+                                  backgroundColor: isFirstNameEmpty ? "rgba(239,68,68,0.06)" : isInvalidEmail ? "rgba(245,158,11,0.06)" : "transparent",
+                                }}
+                                title={isFirstNameEmpty ? "Nombre requerido" : isInvalidEmail ? "Email invalido" : undefined}
+                              >
+                                {val || (isFirstNameEmpty ? "⚠ vacio" : "—")}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           <div className="flex gap-2">
             <PrimaryButton
@@ -1499,206 +1390,6 @@ function CreateDealModal({ open, onClose }: { open: boolean; onClose: () => void
         </PrimaryButton>
       </div>
     </Modal>
-  );
-}
-
-/* ================================================================== */
-/*  Deal Detail Slide-Over                                             */
-/* ================================================================== */
-
-function DealDetailPanel({ dealId, onClose }: { dealId: string; onClose: () => void }) {
-  const { data: deal, isLoading } = trpc.deals.get.useQuery({ dealId });
-  const [editing, setEditing] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-
-  const [editTitle, setEditTitle] = useState("");
-  const [editValue, setEditValue] = useState("");
-  const [editProbability, setEditProbability] = useState("");
-  const [editStageId, setEditStageId] = useState("");
-
-  const { data: pipelines } = trpc.pipeline.list.useQuery();
-  const stages = (pipelines?.[0]?.stages ?? []) as Array<{ id: string; name: string; order: number }>;
-
-  const utils = trpc.useUtils();
-
-  const updateMutation = trpc.deals.update.useMutation({
-    onSuccess: () => {
-      utils.deals.get.invalidate({ dealId });
-      utils.deals.list.invalidate();
-      utils.deals.getStats.invalidate();
-      utils.pipeline.get.invalidate();
-      setEditing(false);
-    },
-  });
-
-  const closeMutation = trpc.deals.close.useMutation({
-    onSuccess: () => {
-      utils.deals.get.invalidate({ dealId });
-      utils.deals.list.invalidate();
-      utils.deals.getStats.invalidate();
-      utils.pipeline.get.invalidate();
-    },
-  });
-
-  const deleteMutation = trpc.deals.delete.useMutation({
-    onSuccess: () => {
-      utils.deals.list.invalidate();
-      utils.deals.getStats.invalidate();
-      utils.pipeline.get.invalidate();
-      onClose();
-    },
-  });
-
-  function startEditing() {
-    if (!deal) return;
-    setEditTitle(deal.title);
-    setEditValue(deal.value ? String(Number(deal.value)) : "");
-    setEditProbability(deal.probability ? String(deal.probability) : "");
-    setEditStageId(deal.stageId);
-    setEditing(true);
-  }
-
-  function handleSave() {
-    updateMutation.mutate({
-      dealId,
-      title: editTitle.trim() || undefined,
-      value: editValue ? parseFloat(editValue) : undefined,
-      probability: editProbability ? parseInt(editProbability) : undefined,
-      stageId: editStageId || undefined,
-    });
-  }
-
-  if (isLoading) {
-    return (
-      <SlideOver open title="Cargando..." onClose={onClose}>
-        <div className="space-y-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-8 rounded bg-[#2a2a2a] animate-pulse" />
-          ))}
-        </div>
-      </SlideOver>
-    );
-  }
-
-  if (!deal) {
-    return (
-      <SlideOver open title="No encontrado" onClose={onClose}>
-        <p className="text-[13px] text-[#888]">El deal no fue encontrado.</p>
-      </SlideOver>
-    );
-  }
-
-  const value = deal.value ? Number(deal.value) : 0;
-  const isClosed = !!deal.closedAt;
-  const contactName = deal.contact ? `${deal.contact.firstName} ${deal.contact.lastName ?? ""}`.trim() : "—";
-
-  return (
-    <SlideOver open title={deal.title} onClose={onClose}>
-      {/* Actions */}
-      <div className="flex gap-2 mb-5 flex-wrap">
-        {!editing ? (
-          <>
-            <SecondaryButton onClick={startEditing}><Edit3 size={13} /> Editar</SecondaryButton>
-            {!isClosed && (
-              <>
-                <PrimaryButton onClick={() => closeMutation.mutate({ dealId, won: true })} disabled={closeMutation.isPending}>
-                  <Check size={13} /> Ganado
-                </PrimaryButton>
-                <DangerButton onClick={() => closeMutation.mutate({ dealId, won: false })} disabled={closeMutation.isPending}>
-                  <X size={13} /> Perdido
-                </DangerButton>
-              </>
-            )}
-            <DangerButton onClick={() => setConfirmDelete(true)} disabled={deleteMutation.isPending}>
-              <Trash2 size={13} /> Eliminar
-            </DangerButton>
-          </>
-        ) : (
-          <>
-            <PrimaryButton onClick={handleSave} disabled={updateMutation.isPending}>
-              <Check size={13} /> {updateMutation.isPending ? "Guardando..." : "Guardar"}
-            </PrimaryButton>
-            <SecondaryButton onClick={() => setEditing(false)}>Cancelar</SecondaryButton>
-          </>
-        )}
-      </div>
-
-      {/* Delete Confirmation */}
-      {confirmDelete && (
-        <div className="rounded-lg border border-red-500/30 p-4 mb-5" style={{ backgroundColor: "rgba(239,68,68,0.08)" }}>
-          <p className="text-[13px] text-red-400 mb-3 flex items-center gap-2">
-            <AlertTriangle size={14} /> Eliminar deal permanentemente?
-          </p>
-          <div className="flex gap-2">
-            <DangerButton onClick={() => deleteMutation.mutate({ dealId })} disabled={deleteMutation.isPending}>
-              {deleteMutation.isPending ? "Eliminando..." : "Si, eliminar"}
-            </DangerButton>
-            <SecondaryButton onClick={() => setConfirmDelete(false)}>Cancelar</SecondaryButton>
-          </div>
-        </div>
-      )}
-
-      {/* Deal Info */}
-      {editing ? (
-        <div className="space-y-4">
-          <FormField label="Titulo"><Input value={editTitle} onChange={setEditTitle} /></FormField>
-          <FormField label="Etapa">
-            <select
-              value={editStageId}
-              onChange={(e) => setEditStageId(e.target.value)}
-              className="w-full h-[36px] px-3 rounded-lg border border-[#333] bg-[#222] text-[13px] text-[#ededed] outline-none"
-            >
-              {stages.sort((a, b) => a.order - b.order).map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
-          </FormField>
-          <div className="grid grid-cols-2 gap-3">
-            <FormField label="Valor ($)"><Input value={editValue} onChange={setEditValue} type="number" /></FormField>
-            <FormField label="Probabilidad (%)"><Input value={editProbability} onChange={setEditProbability} type="number" /></FormField>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-[11px] text-[#888] mb-1">Valor</p>
-                <p className="text-[18px] font-bold text-[#3ecf8e]">${value.toLocaleString()}</p>
-              </div>
-              <div>
-                <p className="text-[11px] text-[#888] mb-1">Probabilidad</p>
-                <p className="text-[18px] font-bold text-[#ededed]">{deal.probability ?? 0}%</p>
-              </div>
-            </div>
-          </div>
-          <div className="rounded-lg border border-[#2e2e2e] p-4 space-y-3" style={{ backgroundColor: "#1e1e1e" }}>
-            <div className="flex justify-between text-[13px]">
-              <span className="text-[#888]">Contacto</span>
-              <span className="text-[#ccc]">{contactName}</span>
-            </div>
-            <div className="flex justify-between text-[13px]">
-              <span className="text-[#888]">Etapa</span>
-              <Badge text={deal.stageId} color={PC.accent} />
-            </div>
-            <div className="flex justify-between text-[13px]">
-              <span className="text-[#888]">Pipeline</span>
-              <span className="text-[#ccc]">{deal.pipeline?.name ?? "—"}</span>
-            </div>
-            <div className="flex justify-between text-[13px]">
-              <span className="text-[#888]">Creado</span>
-              <span className="text-[#ccc]">{new Date(deal.createdAt).toLocaleDateString()}</span>
-            </div>
-            {deal.closedAt && (
-              <div className="flex justify-between text-[13px]">
-                <span className="text-[#888]">Cerrado</span>
-                <span className="text-[#ccc]">{new Date(deal.closedAt).toLocaleDateString()}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </SlideOver>
   );
 }
 

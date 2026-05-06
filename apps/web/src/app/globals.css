@@ -1,5 +1,65 @@
 @import "tailwindcss";
 
+/* ================================================================== */
+/*  NodeLabz Design Tokens                                             */
+/* ================================================================== */
+
+:root {
+  /* Backgrounds */
+  --nl-bg-root: #171717;
+  --nl-bg-primary: #1a1a1a;
+  --nl-bg-secondary: #1e1e1e;
+  --nl-bg-tertiary: #222222;
+  --nl-bg-elevated: #2a2a2a;
+
+  /* Borders */
+  --nl-border: #2e2e2e;
+  --nl-border-subtle: #333333;
+  --nl-border-hover: #555555;
+
+  /* Text */
+  --nl-text-primary: #ededed;
+  --nl-text-secondary: #cccccc;
+  --nl-text-muted: #888888;
+  --nl-text-faint: #666666;
+  --nl-text-placeholder: #555555;
+
+  /* Accent */
+  --nl-accent: #3ecf8e;
+  --nl-accent-hover: #35b57a;
+  --nl-accent-subtle: rgba(62, 207, 142, 0.15);
+  --nl-accent-border: rgba(62, 207, 142, 0.4);
+
+  /* Semantic */
+  --nl-danger: #ef4444;
+  --nl-danger-hover: #dc2626;
+  --nl-danger-subtle: rgba(239, 68, 68, 0.08);
+  --nl-warning: #f59e0b;
+  --nl-warning-subtle: rgba(245, 158, 11, 0.06);
+  --nl-info: #3b82f6;
+  --nl-purple: #6366f1;
+
+  /* Score labels */
+  --nl-hot: #ef4444;
+  --nl-warm: #f59e0b;
+  --nl-cold: #6366f1;
+
+  /* Shadows */
+  --nl-shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.4);
+  --nl-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+
+  /* Radii */
+  --nl-radius-sm: 4px;
+  --nl-radius-md: 8px;
+  --nl-radius-lg: 12px;
+  --nl-radius-xl: 16px;
+  --nl-radius-full: 9999px;
+
+  /* Transitions */
+  --nl-transition-fast: 150ms ease;
+  --nl-transition-normal: 200ms ease;
+}
+
 /* Override browser autofill styling for dark auth forms */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
