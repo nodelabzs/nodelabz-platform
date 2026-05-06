@@ -69,8 +69,9 @@ const contentMap: Record<string, DetailContent> = {
   contacts: {
     title: "Contactos",
     sections: [
-      { title: "GESTION", items: [{ label: "Todos los contactos", isActive: true }, { label: "Empresas" }] },
-      { title: "PIPELINE", items: [{ label: "Pipeline principal" }, { label: "Deals" }] },
+      { title: "GESTION", items: [{ label: "Todos los contactos", isActive: true }, { label: "Empresas" }, { label: "Importar contactos" }] },
+      { title: "PIPELINE", items: [{ label: "Pipeline principal" }, { label: "Deals" }, { label: "Actividades" }] },
+      { title: "SEGMENTACION", items: [{ label: "Etiquetas" }, { label: "Lead scoring" }] },
     ],
   },
   campaigns: {
@@ -78,13 +79,15 @@ const contentMap: Record<string, DetailContent> = {
     sections: [
       { title: "GESTION", items: [{ label: "Todas las campanas", isActive: true }, { label: "Crear campana" }] },
       { title: "RENDIMIENTO", items: [{ label: "Meta Ads" }, { label: "Google Ads" }, { label: "TikTok Ads" }] },
+      { title: "CONTENIDO", items: [{ label: "Generador de copy IA" }, { label: "Calendario" }] },
     ],
   },
   email: {
     title: "Email",
     sections: [
       { title: "GESTION", items: [{ label: "Campanas", isActive: true }, { label: "Plantillas" }, { label: "Secuencias" }] },
-      { title: "CONSTRUCTOR", items: [{ label: "Editor drag & drop" }] },
+      { title: "CONSTRUCTOR", items: [{ label: "Editor drag & drop" }, { label: "Previsualizacion" }] },
+      { title: "METRICAS", items: [{ label: "Entregas" }, { label: "Aperturas" }, { label: "Clics" }] },
     ],
   },
   whatsapp: {
@@ -98,13 +101,15 @@ const contentMap: Record<string, DetailContent> = {
   social: {
     title: "Social Media",
     sections: [
-      { title: "ENGAGEMENT", items: [{ label: "Bandeja de entrada", isActive: true }] },
+      { title: "PUBLICACIONES", items: [{ label: "Calendario", isActive: true }, { label: "Crear publicacion" }] },
+      { title: "CANALES", items: [{ label: "Facebook" }, { label: "Instagram" }, { label: "TikTok" }] },
+      { title: "ENGAGEMENT", items: [{ label: "Bandeja de entrada" }, { label: "Menciones" }] },
     ],
   },
   "ai-studio": {
     title: "AI Studio",
     sections: [
-      { title: "GENERACION", items: [{ label: "Generar Imagen", isActive: true }, { label: "Generar Video" }] },
+      { title: "GENERACION", items: [{ label: "Generar Imagen", isActive: true }, { label: "Generar Video" }, { label: "Generar Copy" }] },
       { title: "ASISTENTE", items: [{ label: "Chat IA" }] },
     ],
   },
@@ -112,12 +117,16 @@ const contentMap: Record<string, DetailContent> = {
     title: "Automatizaciones",
     sections: [
       { title: "WORKFLOWS", items: [{ label: "Todos los workflows", isActive: true }, { label: "Crear workflow" }] },
+      { title: "TRIGGERS", items: [{ label: "Formularios" }, { label: "Lead score" }, { label: "Email events" }] },
+      { title: "HISTORIAL", items: [{ label: "Ejecuciones recientes" }, { label: "Errores" }] },
     ],
   },
   reports: {
     title: "Reportes",
     sections: [
-      { title: "GENERACION", items: [{ label: "Resumen ejecutivo", isActive: true }] },
+      { title: "GENERACION", items: [{ label: "Resumen ejecutivo", isActive: true }, { label: "Reporte personalizado" }] },
+      { title: "PROGRAMADOS", items: [{ label: "Reportes diarios" }, { label: "Reportes semanales" }, { label: "Reportes mensuales" }] },
+      { title: "EXPORTAR", items: [{ label: "Descargar PDF" }, { label: "Enviar por email" }] },
     ],
   },
   integrations: {
@@ -131,6 +140,7 @@ const contentMap: Record<string, DetailContent> = {
     sections: [
       { title: "CUENTA", items: [{ label: "Perfil", isActive: true }, { label: "Equipo" }] },
       { title: "FACTURACION", items: [{ label: "Plan actual" }] },
+      { title: "PLATAFORMA", items: [{ label: "Notificaciones" }, { label: "API Keys" }] },
       { title: "IA", items: [{ label: "Contexto de Negocio" }] },
     ],
   },
