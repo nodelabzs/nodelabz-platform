@@ -63,7 +63,7 @@ export async function POST(req: Request) {
   const tokenData = await tokenRes.json();
 
   if (tokenData.error || !tokenData.access_token) {
-    console.error("[whatsapp-exchange] Token exchange failed:", tokenData);
+    console.error("[whatsapp-exchange] Token exchange failed:", tokenData.error?.message || "Unknown error");
     return NextResponse.json(
       { error: tokenData.error?.message || "Token exchange failed" },
       { status: 400 }

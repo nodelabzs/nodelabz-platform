@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@nodelabz/db";
+import { generateAutoReply } from "@/server/ai/auto-reply";
+import { sendFacebookMessage, sendInstagramMessage } from "@/server/integrations/meta/messages";
 
 export const dynamic = "force-dynamic";
 
@@ -145,9 +147,46 @@ export async function POST(req: Request) {
           },
         });
 
-        // TODO: Fire AI auto-reply when server/ai/auto-reply.ts is ready
-        // import { handleAutoReply } from "@/server/ai/auto-reply";
-        // await handleAutoReply({ tenantId, contactId: contact.id, channel, message: text });
+        // Fire AI auto-reply
+        try {
+          const recentMessages = await prisma.message.findMany({
+            where: { contactId: contact.id, tenantId, channel: channel === "INSTAGRAM_DM" ? "INSTAGRAM_DM" : "FACEBOOK_DM" },
+            orderBy: { createdAt: "desc" },
+            take: 10,
+          });
+          const history = recentMessages.reverse().map((m) => ({
+            role: m.direction === "INBOUND" ? "user" : "assistant",
+            content: m.content,
+          }));
+          const result = await generateAutoReply({
+            tenantId,
+            contactId: contact.id,
+            inboundMessage: text,
+            conversationHistory: history,
+          });
+          if (result.shouldReply && result.reply && integration) {
+            const token = integration.accessToken;
+            const sendFn = channel === "INSTAGRAM_DM" ? sendInstagramMessage : sendFacebookMessage;
+            await sendFn(token, senderId, result.reply);
+            await prisma.message.create({
+              data: {
+                tenantId, contactId: contact.id,
+                channel: channel === "INSTAGRAM_DM" ? "INSTAGRAM_DM" : "FACEBOOK_DM",
+                direction: "OUTBOUND", content: result.reply,
+                metadata: { aiGenerated: true }, status: "sent",
+              },
+            });
+            if (result.scoreLabel) {
+              const scoreMap = { HOT: 90, WARM: 50, COLD: 10 };
+              await prisma.contact.update({
+                where: { id: contact.id },
+                data: { scoreLabel: result.scoreLabel, score: scoreMap[result.scoreLabel] },
+              });
+            }
+          }
+        } catch (autoReplyErr) {
+          console.error("[Meta Messages] Auto-reply failed:", autoReplyErr instanceof Error ? autoReplyErr.message : autoReplyErr);
+        }
       }
     }
   } catch (err) {

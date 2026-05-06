@@ -217,11 +217,22 @@ export const billingRouter = router({
     const plan = tenant.plan as PlanName;
     const limits = PLAN_LIMITS[plan] ?? PLAN_LIMITS.INICIO;
 
-    const [contactCount, aiUsage] = await Promise.all([
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [contactCount, aiUsage, emailsSent] = await Promise.all([
       prisma.contact.count({
         where: { tenantId: ctx.effectiveTenantId },
       }),
       getAiUsage(ctx.effectiveTenantId),
+      prisma.message.count({
+        where: {
+          tenantId: ctx.effectiveTenantId,
+          channel: "EMAIL",
+          direction: "OUTBOUND",
+          createdAt: { gte: monthStart },
+        },
+      }),
     ]);
 
     const contactsUnlimited = limits.maxContacts === -1;
@@ -240,9 +251,11 @@ export const billingRouter = router({
         unlimited: contactsUnlimited,
       },
       emails: {
-        used: 0, // TODO: track email sends
+        used: emailsSent,
         limit: limits.maxEmails,
-        remaining: emailsUnlimited ? -1 : limits.maxEmails,
+        remaining: emailsUnlimited
+          ? -1
+          : Math.max(0, limits.maxEmails - emailsSent),
         unlimited: emailsUnlimited,
       },
       aiImages: {
