@@ -6,8 +6,12 @@ import { Providers } from "./providers";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "NodeLabz — AI Data Agency",
+  title: "NodeLabz",
   description: "AI-powered marketing intelligence platform for LATAM businesses",
+  icons: {
+    icon: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({
