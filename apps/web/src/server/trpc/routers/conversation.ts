@@ -44,9 +44,9 @@ export const conversationRouter = router({
     .input(
       z.object({
         conversationId: z.string().uuid(),
-        role: z.string(),
-        content: z.string(),
-        metadata: z.any().optional(),
+        role: z.enum(["user", "assistant", "system"]),
+        content: z.string().max(50000),
+        metadata: z.record(z.unknown()).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

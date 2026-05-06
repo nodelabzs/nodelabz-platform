@@ -86,9 +86,13 @@ export const emailCampaignsRouter = router({
   create: tenantProcedure
     .input(
       z.object({
-        name: z.string().min(1),
+        name: z.string().min(1).max(200),
         templateId: z.string().uuid(),
-        segmentQuery: z.any().optional(),
+        segmentQuery: z.object({
+          tags: z.array(z.string()).optional(),
+          scoreLabel: z.enum(["HOT", "WARM", "COLD"]).optional(),
+          source: z.string().max(100).optional(),
+        }).optional(),
         scheduledAt: z.string().datetime().optional(),
       })
     )

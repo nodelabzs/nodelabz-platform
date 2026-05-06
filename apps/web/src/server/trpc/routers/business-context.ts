@@ -25,16 +25,16 @@ const businessContextSchema = z.object({
   }),
   faqs: z.array(
     z.object({
-      question: z.string().min(1),
-      answer: z.string().min(1),
+      question: z.string().min(1).max(500),
+      answer: z.string().min(1).max(2000),
     })
-  ),
+  ).max(50),
   tone: z.enum(["professional", "friendly", "casual", "formal"]),
   language: z.enum(["es", "en"]),
   autoReplyEnabled: z.boolean(),
   qualifyLeads: z.boolean(),
   createDeals: z.boolean(),
-  customInstructions: z.string(),
+  customInstructions: z.string().max(5000),
 });
 
 export type BusinessContext = z.infer<typeof businessContextSchema>;

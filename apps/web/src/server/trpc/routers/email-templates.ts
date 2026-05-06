@@ -105,9 +105,13 @@ export const emailTemplatesRouter = router({
   create: tenantProcedure
     .input(
       z.object({
-        name: z.string().min(1),
-        subject: z.string().min(1),
-        content: z.any(), // JSON from email builder
+        name: z.string().min(1).max(200),
+        subject: z.string().min(1).max(500),
+        content: z.array(z.object({
+          type: z.string(),
+          content: z.unknown().optional(),
+          style: z.record(z.string()).optional(),
+        }).passthrough()).max(100),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -132,7 +136,11 @@ export const emailTemplatesRouter = router({
         templateId: z.string().uuid(),
         name: z.string().min(1).optional(),
         subject: z.string().min(1).optional(),
-        content: z.any().optional(),
+        content: z.array(z.object({
+          type: z.string(),
+          content: z.unknown().optional(),
+          style: z.record(z.string()).optional(),
+        }).passthrough()).max(100).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
