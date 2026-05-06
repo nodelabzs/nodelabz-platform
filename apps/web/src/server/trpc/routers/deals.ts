@@ -22,6 +22,7 @@ export const dealsRouter = router({
       return prisma.deal.findMany({
         where: {
           tenantId: ctx.effectiveTenantId,
+          deletedAt: null,
           ...(input?.pipelineId && { pipelineId: input.pipelineId }),
           ...(input?.stageId && { stageId: input.stageId }),
           ...(input?.contactId && { contactId: input.contactId }),
@@ -236,7 +237,7 @@ export const dealsRouter = router({
     }),
 
   delete: tenantProcedure
-    .input(z.object({ dealId: z.string().uuid() }))
+    .input(z.object({ dealId: z.string().uuid(), hard: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
       const deal = await prisma.deal.findFirst({
         where: { id: input.dealId, tenantId: ctx.effectiveTenantId },
@@ -244,8 +245,25 @@ export const dealsRouter = router({
 
       if (!deal) throw new TRPCError({ code: "NOT_FOUND" });
 
-      await prisma.deal.delete({ where: { id: input.dealId } });
+      if (input.hard) {
+        await prisma.deal.delete({ where: { id: input.dealId } });
+      } else {
+        await prisma.deal.update({
+          where: { id: input.dealId },
+          data: { deletedAt: new Date() },
+        });
+      }
       return { success: true };
+    }),
+
+  restore: tenantProcedure
+    .input(z.object({ dealId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const deal = await prisma.deal.findFirst({
+        where: { id: input.dealId, tenantId: ctx.effectiveTenantId, deletedAt: { not: null } },
+      });
+      if (!deal) throw new TRPCError({ code: "NOT_FOUND" });
+      return prisma.deal.update({ where: { id: input.dealId }, data: { deletedAt: null } });
     }),
 
   exportCSV: tenantProcedure

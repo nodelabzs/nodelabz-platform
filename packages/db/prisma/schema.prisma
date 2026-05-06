@@ -117,6 +117,7 @@ model Contact {
   assignedTo  String?
   tags        String[]
   customData  Json?
+  deletedAt   DateTime?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
@@ -127,6 +128,7 @@ model Contact {
   @@index([tenantId])
   @@index([tenantId, email])
   @@index([tenantId, scoreLabel])
+  @@index([tenantId, deletedAt])
   @@map("contacts")
 }
 
@@ -184,11 +186,13 @@ model Deal {
   stageId     String
   probability Int?
   closedAt    DateTime?
+  deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   @@index([tenantId])
   @@index([tenantId, pipelineId])
+  @@index([tenantId, deletedAt])
   @@map("deals")
 }
 

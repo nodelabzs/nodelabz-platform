@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { useEffect, useRef, useCallback } from "react";
+import { CalendarView } from "@/components/ui/calendar-view";
 import { Plus, Play, BarChart3, Sparkles, Image, ChevronLeft, ChevronRight, CheckCircle, Loader2, Video, Download, Upload, Film, Clock, AlertCircle } from "lucide-react";
 
 function SectionHeader({ title, description, action }: { title: string; description?: string; action?: React.ReactNode }) {
@@ -1064,35 +1065,51 @@ export function CreativosPage() {
 }
 
 export function CalendarioPage() {
-  const days = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
+  const { data: deals } = trpc.deals.list.useQuery({});
+  const { data: activitiesData } = trpc.activities.list.useQuery({ limit: 100 });
+
+  const events = useMemo(() => {
+    const result: Array<{ id: string; title: string; date: Date; type: "deal" | "activity" | "closed"; value?: number }> = [];
+
+    if (deals) {
+      for (const deal of deals) {
+        result.push({
+          id: `deal-${deal.id}`,
+          title: deal.title,
+          date: new Date(deal.createdAt),
+          type: "deal",
+          value: deal.value ? Number(deal.value) : undefined,
+        });
+        if (deal.closedAt) {
+          result.push({
+            id: `closed-${deal.id}`,
+            title: `Cerrado: ${deal.title}`,
+            date: new Date(deal.closedAt),
+            type: "closed",
+          });
+        }
+      }
+    }
+
+    if (activitiesData?.activities) {
+      for (const a of activitiesData.activities) {
+        if (a.type === "system_event") continue;
+        result.push({
+          id: `act-${a.id}`,
+          title: a.subject ?? a.type.replace(/_/g, " "),
+          date: new Date(a.createdAt),
+          type: "activity",
+        });
+      }
+    }
+
+    return result;
+  }, [deals, activitiesData]);
+
   return (
     <>
-      <SectionHeader title="Calendario" description="Calendario de campanas y contenido" />
-      <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-[14px] font-medium text-[#ededed]">Marzo 2026</h3>
-          <div className="flex gap-2">
-            <button className="text-[12px] px-2 py-1 rounded text-[#888] hover:text-[#ededed]">&larr;</button>
-            <button className="text-[12px] px-2 py-1 rounded text-[#888] hover:text-[#ededed]">&rarr;</button>
-          </div>
-        </div>
-        <div className="grid grid-cols-7 gap-1">
-          {days.map((d) => (
-            <div key={d} className="text-center text-[11px] text-[#888] py-2">{d}</div>
-          ))}
-          {Array.from({ length: 31 }).map((_, i) => (
-            <div
-              key={i}
-              className={`text-center text-[12px] py-2 rounded cursor-pointer transition-colors ${
-                i === 14 ? "text-[#ededed] font-medium" : "text-[#888] hover:bg-[#2a2a2a]"
-              }`}
-              style={i === 14 ? { backgroundColor: "#3ecf8e20" } : {}}
-            >
-              {i + 1}
-            </div>
-          ))}
-        </div>
-      </div>
+      <SectionHeader title="Calendario" description="Vista general de deals y actividades" />
+      <CalendarView events={events} />
     </>
   );
 }

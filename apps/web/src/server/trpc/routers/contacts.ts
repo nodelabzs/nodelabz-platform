@@ -69,6 +69,7 @@ export const contactsRouter = router({
 
       const where: Record<string, unknown> = {
         tenantId: ctx.effectiveTenantId,
+        deletedAt: null,
       };
 
       if (search) {
@@ -143,7 +144,7 @@ export const contactsRouter = router({
     .input(z.object({ contactId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const contact = await prisma.contact.findFirst({
-        where: { id: input.contactId, tenantId: ctx.effectiveTenantId },
+        where: { id: input.contactId, tenantId: ctx.effectiveTenantId, deletedAt: null },
         include: {
           deals: true,
           activities: { take: 20, orderBy: { createdAt: "desc" } },
@@ -246,7 +247,7 @@ export const contactsRouter = router({
     }),
 
   delete: tenantProcedure
-    .input(z.object({ contactId: z.string().uuid() }))
+    .input(z.object({ contactId: z.string().uuid(), hard: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
       const contact = await prisma.contact.findFirst({
         where: { id: input.contactId, tenantId: ctx.effectiveTenantId },
@@ -254,13 +255,125 @@ export const contactsRouter = router({
 
       if (!contact) throw new TRPCError({ code: "NOT_FOUND" });
 
-      await prisma.contact.delete({ where: { id: input.contactId } });
+      if (input.hard) {
+        await prisma.contact.delete({ where: { id: input.contactId } });
+      } else {
+        await prisma.contact.update({
+          where: { id: input.contactId },
+          data: { deletedAt: new Date() },
+        });
+      }
 
       void fireTrigger(ctx.effectiveTenantId, "contact.deleted", {
         contactId: input.contactId,
       });
 
       return { success: true };
+    }),
+
+  restore: tenantProcedure
+    .input(z.object({ contactId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const contact = await prisma.contact.findFirst({
+        where: { id: input.contactId, tenantId: ctx.effectiveTenantId, deletedAt: { not: null } },
+      });
+
+      if (!contact) throw new TRPCError({ code: "NOT_FOUND" });
+
+      return prisma.contact.update({
+        where: { id: input.contactId },
+        data: { deletedAt: null },
+      });
+    }),
+
+  listTrash: tenantProcedure
+    .input(z.object({ page: z.number().int().min(1).default(1), limit: z.number().int().min(1).max(100).default(20) }))
+    .query(async ({ ctx, input }) => {
+      const where = { tenantId: ctx.effectiveTenantId, deletedAt: { not: null } };
+      const [contacts, total] = await Promise.all([
+        prisma.contact.findMany({
+          where,
+          orderBy: { deletedAt: "desc" },
+          skip: (input.page - 1) * input.limit,
+          take: input.limit,
+        }),
+        prisma.contact.count({ where }),
+      ]);
+      return { contacts, total, page: input.page, totalPages: Math.ceil(total / input.limit) };
+    }),
+
+  findDuplicates: tenantProcedure
+    .input(z.object({ contactId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const contact = await prisma.contact.findFirst({
+        where: { id: input.contactId, tenantId: ctx.effectiveTenantId },
+      });
+      if (!contact) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const conditions: Record<string, unknown>[] = [];
+      if (contact.email) {
+        conditions.push({ email: contact.email });
+      }
+      if (contact.phone) {
+        conditions.push({ phone: contact.phone });
+      }
+      if (contact.firstName && contact.lastName) {
+        conditions.push({ firstName: contact.firstName, lastName: contact.lastName });
+      }
+
+      if (conditions.length === 0) return { duplicates: [] };
+
+      const duplicates = await prisma.contact.findMany({
+        where: {
+          tenantId: ctx.effectiveTenantId,
+          id: { not: contact.id },
+          deletedAt: null,
+          OR: conditions,
+        },
+        take: 10,
+      });
+
+      return { duplicates };
+    }),
+
+  merge: tenantProcedure
+    .input(z.object({
+      keepId: z.string().uuid(),
+      mergeId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const tenantId = ctx.effectiveTenantId;
+      const [keep, merge] = await Promise.all([
+        prisma.contact.findFirst({ where: { id: input.keepId, tenantId } }),
+        prisma.contact.findFirst({ where: { id: input.mergeId, tenantId } }),
+      ]);
+
+      if (!keep || !merge) throw new TRPCError({ code: "NOT_FOUND" });
+
+      // Move deals, activities, messages from merge → keep
+      await prisma.$transaction([
+        prisma.deal.updateMany({ where: { contactId: merge.id }, data: { contactId: keep.id } }),
+        prisma.activity.updateMany({ where: { contactId: merge.id }, data: { contactId: keep.id } }),
+        prisma.message.updateMany({ where: { contactId: merge.id }, data: { contactId: keep.id } }),
+        // Fill in missing fields on keep from merge
+        prisma.contact.update({
+          where: { id: keep.id },
+          data: {
+            email: keep.email || merge.email,
+            phone: keep.phone || merge.phone,
+            company: keep.company || merge.company,
+            source: keep.source || merge.source,
+            tags: Array.from(new Set([...keep.tags, ...merge.tags])),
+          },
+        }),
+        // Soft-delete the merged contact
+        prisma.contact.update({
+          where: { id: merge.id },
+          data: { deletedAt: new Date() },
+        }),
+      ]);
+
+      return { success: true, keptId: keep.id };
     }),
 
   bulkImport: tenantProcedure

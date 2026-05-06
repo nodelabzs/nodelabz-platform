@@ -101,6 +101,7 @@ describe("executeWorkflow", () => {
       assignedTo: null,
       tags: [],
       customData: null,
+      deletedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
