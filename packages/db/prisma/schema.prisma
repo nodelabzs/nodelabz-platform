@@ -516,3 +516,38 @@ model PlatformAuditLog {
   @@index([action, createdAt])
   @@map("platform_audit_logs")
 }
+
+model Form {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  name        String
+  description String?
+  fields      Json     @default("[]")
+  settings    Json     @default("{}")
+  isPublished Boolean  @default(false)
+  slug        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  submissions FormSubmission[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("forms")
+}
+
+model FormSubmission {
+  id        String   @id @default(uuid()) @db.Uuid
+  formId    String   @db.Uuid
+  tenantId  String   @db.Uuid
+  data      Json     @default("{}")
+  contactId String?  @db.Uuid
+  source    String?
+  createdAt DateTime @default(now())
+
+  form Form @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@index([formId])
+  @@index([tenantId])
+  @@map("form_submissions")
+}

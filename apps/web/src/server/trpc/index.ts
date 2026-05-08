@@ -27,6 +27,7 @@ import { mediaGenRouter } from "./routers/media-gen";
 import { aiMemoryRouter } from "./routers/ai-memory";
 import { apiKeysRouter } from "./routers/api-keys";
 import { fieldDefinitionsRouter } from "./routers/field-definitions";
+import { formsRouter } from "./routers/forms";
 
 export const appRouter = router({
   health: publicProcedure.query(() => ({ status: "ok" })),
@@ -57,6 +58,7 @@ export const appRouter = router({
   aiMemory: aiMemoryRouter,
   apiKeys: apiKeysRouter,
   fieldDefinitions: fieldDefinitionsRouter,
+  forms: formsRouter,
 });
 
 export type AppRouter = typeof appRouter;
