@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { Providers } from "./providers";
 
@@ -28,6 +29,7 @@ export default function RootLayout({
     <html lang="es" className="dark overflow-hidden" suppressHydrationWarning>
       <body className={`${inter.className} overflow-hidden h-screen`} style={{ backgroundColor: "#171717" }}>
         <Providers>{children}</Providers>
+        <Analytics />
       </body>
     </html>
   );
