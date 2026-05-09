@@ -168,8 +168,9 @@ export const emailCampaignsRouter = router({
       }
 
       const contacts = await prisma.contact.findMany({
-        where: contactWhere,
+        where: { ...contactWhere, deletedAt: null },
         select: { id: true, firstName: true, lastName: true, email: true, company: true },
+        take: 10_000,
       });
 
       // Mark as sending

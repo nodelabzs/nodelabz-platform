@@ -57,13 +57,21 @@ export const activitiesRouter = router({
         type: z.string(),
         subject: z.string().optional(),
         body: z.string().optional(),
-        metadata: z.any().optional(),
+        metadata: z.record(z.string(), z.unknown()).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const tenantId = ctx.effectiveTenantId;
+      // Verify contact belongs to this tenant
+      const contact = await prisma.contact.findFirst({
+        where: { id: input.contactId, tenantId },
+        select: { id: true },
+      });
+      if (!contact) throw new TRPCError({ code: "NOT_FOUND", message: "Contact not found" });
+
       return prisma.activity.create({
         data: {
-          tenantId: ctx.effectiveTenantId,
+          tenantId,
           contactId: input.contactId,
           type: input.type,
           subject: input.subject,

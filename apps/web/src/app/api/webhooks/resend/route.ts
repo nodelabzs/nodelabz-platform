@@ -22,17 +22,40 @@ function getCampaignIdFromTags(tags?: { name: string; value: string }[]): string
   return tag?.value || null;
 }
 
-async function incrementStat(campaignId: string, field: string) {
-  await prisma.$executeRawUnsafe(
-    `UPDATE "email_campaigns" SET stats = jsonb_set(
+const VALID_STAT_FIELDS = ["delivered", "opened", "clicked", "bounced"] as const;
+
+async function incrementStat(campaignId: string, field: (typeof VALID_STAT_FIELDS)[number]) {
+  if (!VALID_STAT_FIELDS.includes(field)) return;
+  // Use parameterized query — field is validated against whitelist above
+  await prisma.$executeRaw`
+    UPDATE "email_campaigns" SET stats = jsonb_set(
       COALESCE(stats, '{}')::jsonb,
-      $1::text[],
-      (COALESCE((stats->>$2)::int, 0) + 1)::text::jsonb
-    ) WHERE id = $3`,
-    `{${field}}`,
-    field,
-    campaignId
-  );
+      ${`{${field}}`}::text[],
+      (COALESCE((stats->>${field})::int, 0) + 1)::text::jsonb
+    ) WHERE id = ${campaignId}
+  `;
+}
+
+async function tagContactByEmail(
+  campaignId: string | null,
+  email: string,
+  tag: string,
+) {
+  // Scope to campaign's tenant to prevent cross-tenant tagging
+  if (campaignId) {
+    const campaign = await prisma.emailCampaign.findUnique({
+      where: { id: campaignId },
+      select: { tenantId: true },
+    });
+    if (campaign) {
+      await prisma.contact.updateMany({
+        where: { email, tenantId: campaign.tenantId },
+        data: { tags: { push: tag } },
+      });
+      return;
+    }
+  }
+  // Fallback: no campaign context, skip contact update to avoid cross-tenant leak
 }
 
 export async function POST(request: Request) {
@@ -56,13 +79,9 @@ export async function POST(request: Request) {
 
       case "email.bounced": {
         if (campaignId) await incrementStat(campaignId, "bounced");
-        // Tag the contact as bounced
         const bouncedTo = event.data?.to?.[0];
         if (bouncedTo) {
-          await prisma.contact.updateMany({
-            where: { email: bouncedTo },
-            data: { tags: { push: "email_bounced" } },
-          });
+          await tagContactByEmail(campaignId, bouncedTo, "email_bounced");
         }
         break;
       }
@@ -70,10 +89,7 @@ export async function POST(request: Request) {
       case "email.complained": {
         const complainedTo = event.data?.to?.[0];
         if (complainedTo) {
-          await prisma.contact.updateMany({
-            where: { email: complainedTo },
-            data: { tags: { push: "email_complaint" } },
-          });
+          await tagContactByEmail(campaignId, complainedTo, "email_complaint");
         }
         break;
       }

@@ -228,8 +228,8 @@ export const dealsRouter = router({
       // Notify on deal won
       if (input.won) {
         const dealValue = existing.value ? Number(existing.value) : null;
-        notifyDealWon(ctx.effectiveTenantId, existing.title, dealValue).catch(() => {
-          /* fire-and-forget — don't block the mutation */
+        notifyDealWon(ctx.effectiveTenantId, existing.title, dealValue).catch((err: unknown) => {
+          console.error("Failed to notify deal won:", err);
         });
       }
 

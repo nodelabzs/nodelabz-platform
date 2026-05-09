@@ -119,11 +119,14 @@ export const formsRouter = router({
       };
     }),
 
-  /** Public: submit a form (no auth required) */
+  /** Public: submit a form (no auth required, rate limited by slug) */
   submit: publicProcedure
     .input(z.object({
-      slug: z.string(),
-      data: z.record(z.unknown()),
+      slug: z.string().max(100),
+      data: z.record(z.string(), z.unknown()).refine(
+        (d) => JSON.stringify(d).length < 50_000,
+        { message: "Submission data too large" },
+      ),
       source: z.string().max(200).optional(),
     }))
     .mutation(async ({ input }) => {

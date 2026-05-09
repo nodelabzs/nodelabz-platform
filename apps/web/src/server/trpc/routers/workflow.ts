@@ -7,9 +7,9 @@ import { TRPCError } from "@trpc/server";
 
 // Workflow nodes/edges are flexible JSON objects from the visual builder.
 // We validate they're arrays of objects with reasonable limits.
-const workflowNodeSchema = z.record(z.unknown());
-const workflowEdgeSchema = z.record(z.unknown());
-const triggerSchema = z.record(z.unknown());
+const workflowNodeSchema = z.record(z.string(), z.unknown());
+const workflowEdgeSchema = z.record(z.string(), z.unknown());
+const triggerSchema = z.record(z.string(), z.unknown());
 
 export const workflowRouter = router({
   list: tenantProcedure.query(async ({ ctx }) => {

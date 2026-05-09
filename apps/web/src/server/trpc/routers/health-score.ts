@@ -28,6 +28,7 @@ async function calculateHealthScore(tenantId: string) {
   const campaignMetrics = await prisma.campaignMetric.findMany({
     where: { tenantId, date: { gte: thirtyDaysAgo } },
     orderBy: { date: "desc" },
+    take: 1000,
   });
 
   if (campaignMetrics.length > 0) {

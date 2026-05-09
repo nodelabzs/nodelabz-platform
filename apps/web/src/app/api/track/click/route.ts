@@ -22,6 +22,16 @@ export async function GET(request: NextRequest) {
 
   const targetUrl = decodeURIComponent(url);
 
+  // Prevent open redirect — only allow http(s) URLs
+  try {
+    const parsed = new URL(targetUrl);
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return NextResponse.json({ error: "Invalid URL protocol" }, { status: 400 });
+    }
+  } catch {
+    return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
+  }
+
   if (campaignId && email) {
     try {
       await prisma.$executeRaw`

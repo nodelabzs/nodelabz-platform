@@ -166,7 +166,7 @@ export const contactsRouter = router({
         company: z.string().optional(),
         source: z.string().optional(),
         tags: z.array(z.string()).optional(),
-        customData: z.any().optional(),
+        customData: z.record(z.string(), z.unknown()).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -201,8 +201,8 @@ export const contactsRouter = router({
       // Notify if the new contact is scored as HOT
       if (contact.scoreLabel === "HOT") {
         const name = [contact.firstName, contact.lastName].filter(Boolean).join(" ");
-        notifyNewLead(ctx.effectiveTenantId, name).catch(() => {
-          /* fire-and-forget — don't block the mutation */
+        notifyNewLead(ctx.effectiveTenantId, name).catch((err: unknown) => {
+          console.error("Failed to notify new lead:", err);
         });
       }
 
@@ -222,7 +222,7 @@ export const contactsRouter = router({
         stage: z.string().optional(),
         assignedTo: z.string().optional(),
         tags: z.array(z.string()).optional(),
-        customData: z.any().optional(),
+        customData: z.record(z.string(), z.unknown()).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -932,15 +932,15 @@ export const contactsRouter = router({
       withPhone,
       sourceGroups,
     ] = await Promise.all([
-      prisma.contact.count({ where: { tenantId } }),
-      prisma.contact.count({ where: { tenantId, scoreLabel: "HOT" } }),
-      prisma.contact.count({ where: { tenantId, scoreLabel: "WARM" } }),
-      prisma.contact.count({ where: { tenantId, scoreLabel: "COLD" } }),
-      prisma.contact.count({ where: { tenantId, email: { not: null } } }),
-      prisma.contact.count({ where: { tenantId, phone: { not: null } } }),
+      prisma.contact.count({ where: { tenantId, deletedAt: null } }),
+      prisma.contact.count({ where: { tenantId, deletedAt: null, scoreLabel: "HOT" } }),
+      prisma.contact.count({ where: { tenantId, deletedAt: null, scoreLabel: "WARM" } }),
+      prisma.contact.count({ where: { tenantId, deletedAt: null, scoreLabel: "COLD" } }),
+      prisma.contact.count({ where: { tenantId, deletedAt: null, email: { not: null } } }),
+      prisma.contact.count({ where: { tenantId, deletedAt: null, phone: { not: null } } }),
       prisma.contact.groupBy({
         by: ["source"],
-        where: { tenantId },
+        where: { tenantId, deletedAt: null },
         _count: { id: true },
       }),
     ]);
@@ -966,19 +966,17 @@ export const contactsRouter = router({
   // ── Tag listing ────────────────────────────────────────────────
 
   listTags: tenantProcedure.query(async ({ ctx }) => {
-    const contacts = await prisma.contact.findMany({
-      where: { tenantId: ctx.effectiveTenantId },
-      select: { tags: true },
-    });
-    const tagCounts: Record<string, number> = {};
-    for (const c of contacts) {
-      for (const t of c.tags) {
-        tagCounts[t] = (tagCounts[t] || 0) + 1;
-      }
-    }
-    return Object.entries(tagCounts)
-      .map(([tag, count]) => ({ tag, count }))
-      .sort((a, b) => b.count - a.count);
+    const tenantId = ctx.effectiveTenantId;
+    // Use raw SQL to aggregate tags efficiently instead of loading all contacts
+    const result = await prisma.$queryRaw<{ tag: string; count: bigint }[]>`
+      SELECT unnest(tags) as tag, COUNT(*) as count
+      FROM "contacts"
+      WHERE "tenantId" = ${tenantId} AND "deletedAt" IS NULL
+      GROUP BY tag
+      ORDER BY count DESC
+      LIMIT 200
+    `;
+    return result.map((r) => ({ tag: r.tag, count: Number(r.count) }));
   }),
 
   removeTagFromAll: tenantProcedure
