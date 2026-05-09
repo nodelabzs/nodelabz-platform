@@ -124,6 +124,7 @@ model Contact {
   activities  Activity[]
   deals       Deal[]
   messages    Message[]
+  sequenceEnrollments SequenceEnrollment[]
 
   @@index([tenantId])
   @@index([tenantId, email])
@@ -179,7 +180,7 @@ model Deal {
   contactId   String
   contact     Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
   pipelineId  String
-  pipeline    Pipeline  @relation(fields: [pipelineId], references: [id])
+  pipeline    Pipeline  @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   title       String
   value       Decimal?
   currency    String    @default("USD")
@@ -193,6 +194,7 @@ model Deal {
   @@index([tenantId])
   @@index([tenantId, pipelineId])
   @@index([tenantId, deletedAt])
+  @@index([contactId])
   @@map("deals")
 }
 
@@ -424,6 +426,8 @@ model EmailTemplate {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  campaigns EmailCampaign[]
+
   @@index([tenantId])
   @@map("email_templates")
 }
@@ -433,6 +437,7 @@ model EmailCampaign {
   tenantId     String
   tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   templateId   String
+  template     EmailTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
   name         String
   segmentQuery Json?
   scheduledAt  DateTime?
@@ -471,9 +476,11 @@ model SequenceEnrollment {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   sequence    Sequence  @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  contact     Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
   @@index([sequenceId, status])
   @@index([nextSendAt])
+  @@index([contactId])
   @@map("sequence_enrollments")
 }
 
@@ -518,8 +525,8 @@ model PlatformAuditLog {
 }
 
 model Form {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @db.Uuid
+  id          String   @id @default(uuid())
+  tenantId    String
   name        String
   description String?
   fields      Json     @default("[]")
@@ -537,11 +544,11 @@ model Form {
 }
 
 model FormSubmission {
-  id        String   @id @default(uuid()) @db.Uuid
-  formId    String   @db.Uuid
-  tenantId  String   @db.Uuid
+  id        String   @id @default(uuid())
+  formId    String
+  tenantId  String
   data      Json     @default("{}")
-  contactId String?  @db.Uuid
+  contactId String?
   source    String?
   createdAt DateTime @default(now())
 
