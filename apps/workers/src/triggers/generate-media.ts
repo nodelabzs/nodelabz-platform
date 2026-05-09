@@ -44,6 +44,7 @@ export const generateMedia = task({
             type,
             model: model || "default",
           }),
+          signal: AbortSignal.timeout(30_000),
         }
       );
 
@@ -77,6 +78,7 @@ export const generateMedia = task({
           headers: {
             Authorization: `Bearer ${keyId}:${keySecret}`,
           },
+          signal: AbortSignal.timeout(15_000),
         });
 
         if (!statusResponse.ok) {

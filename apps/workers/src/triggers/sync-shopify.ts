@@ -70,6 +70,7 @@ export const syncShopify = task({
           headers: {
             "X-Shopify-Access-Token": integration.accessToken,
           },
+          signal: AbortSignal.timeout(30_000),
         });
 
         if (!response.ok) {
@@ -167,6 +168,7 @@ export const syncShopify = task({
           headers: {
             "X-Shopify-Access-Token": integration.accessToken,
           },
+          signal: AbortSignal.timeout(30_000),
         });
 
         if (!response.ok) {

@@ -30,6 +30,7 @@ async function refreshTokenIfNeeded(integration: {
       refresh_token: integration.refreshToken,
       grant_type: "refresh_token",
     }),
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!response.ok) {
@@ -99,6 +100,7 @@ export const syncGA4 = task({
             { name: "engagementRate" },
           ],
         }),
+        signal: AbortSignal.timeout(30_000),
       });
 
       if (!response.ok) {

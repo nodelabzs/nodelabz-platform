@@ -60,6 +60,7 @@ export const syncTikTok = task({
               "Content-Type": "application/json",
               "Access-Token": integration.accessToken,
             },
+            signal: AbortSignal.timeout(30_000),
             body: JSON.stringify({
               advertiser_id: accountId,
               report_type: "BASIC",

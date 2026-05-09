@@ -21,6 +21,8 @@ export const dripSequenceProcessor = task({
       include: {
         sequence: true,
       },
+      take: 500,
+      orderBy: { nextSendAt: "asc" },
     });
 
     if (dueEnrollments.length === 0) {
@@ -68,10 +70,15 @@ export const dripSequenceProcessor = task({
         });
 
         if (!template) {
-          logger.warn("Template not found for step", {
+          logger.warn("Template not found for step — pausing enrollment", {
             enrollmentId: enrollment.id,
             templateId: currentStep.templateId,
           });
+          await prisma.sequenceEnrollment.update({
+            where: { id: enrollment.id },
+            data: { status: "paused" },
+          });
+          errorCount++;
           continue;
         }
 
@@ -124,6 +131,7 @@ export const dripSequenceProcessor = task({
             subject,
             html: emailHtml,
           }),
+          signal: AbortSignal.timeout(30_000),
         });
 
         if (!response.ok) {

@@ -799,6 +799,12 @@ export function ImportarContactosPage() {
         </div>
       )}
 
+      {(parseMutation.error || importMutation.error) && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4">
+          <p className="text-[13px] text-red-400">{parseMutation.error?.message || importMutation.error?.message}</p>
+        </div>
+      )}
+
       {step === "mapping" && (
         <div className="space-y-4">
           <div className="rounded-lg border border-[#2e2e2e] p-4" style={{ backgroundColor: "#1e1e1e" }}>
@@ -1769,6 +1775,7 @@ export function EtiquetasPage() {
     onSuccess: () => {
       utils.contacts.listTags.invalidate();
       utils.contacts.list.invalidate();
+      utils.contacts.getFilterCounts.invalidate();
       setConfirmDeleteTag(null);
       if (selectedTag === confirmDeleteTag) setSelectedTag(null);
     },

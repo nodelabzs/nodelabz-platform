@@ -48,6 +48,7 @@ export const sendEmail = task({
           subject,
           html,
         }),
+        signal: AbortSignal.timeout(30_000),
       });
 
       if (!response.ok) {

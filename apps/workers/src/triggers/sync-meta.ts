@@ -74,7 +74,7 @@ export const syncMeta = task({
         `https://graph.facebook.com/v21.0/act_${accountId}/insights?${params.toString()}`;
 
       while (url) {
-        const response: Response = await fetch(url);
+        const response: Response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
 
         if (!response.ok) {
           const errorText = await response.text();

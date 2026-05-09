@@ -174,6 +174,7 @@ export const scheduledReport = task({
           subject: `Reporte ${periodLabel} - ${tenant.name} (${fromStr} - ${toStr})`,
           html,
         }),
+        signal: AbortSignal.timeout(30_000),
       });
 
       if (!response.ok) {
