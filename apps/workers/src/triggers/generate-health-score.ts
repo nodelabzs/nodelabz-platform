@@ -261,7 +261,12 @@ export async function calculateHealthScore(tenantId: string) {
     .slice(0, 3)
     .map((p) => p.rec);
 
-  // ── Store ────────────────────────────────────────────────────────────
+  // ── Store (deduplicate: delete any score from the last hour first) ──
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  await prisma.healthScore.deleteMany({
+    where: { tenantId, calculatedAt: { gte: oneHourAgo } },
+  });
+
   const healthScore = await prisma.healthScore.create({
     data: {
       tenantId,

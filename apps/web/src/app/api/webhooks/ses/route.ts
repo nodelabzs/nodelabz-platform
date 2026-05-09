@@ -84,8 +84,18 @@ export async function POST(request: Request) {
     // SNS Subscription Confirmation
     // ------------------------------------------------------------------
     if (body.Type === "SubscriptionConfirmation" && body.SubscribeURL) {
+      // Validate that the SubscribeURL is actually from AWS SNS
+      try {
+        const subscribeUrl = new URL(body.SubscribeURL);
+        if (!subscribeUrl.hostname.endsWith(".amazonaws.com")) {
+          console.error("[SES Webhook] Rejected non-AWS SubscribeURL:", subscribeUrl.hostname);
+          return NextResponse.json({ error: "Invalid SubscribeURL" }, { status: 400 });
+        }
+      } catch {
+        return NextResponse.json({ error: "Invalid SubscribeURL" }, { status: 400 });
+      }
       console.log("[SES Webhook] Confirming SNS subscription...");
-      await fetch(body.SubscribeURL);
+      await fetch(body.SubscribeURL, { signal: AbortSignal.timeout(10_000) });
       return NextResponse.json({ confirmed: true }, { status: 200 });
     }
 

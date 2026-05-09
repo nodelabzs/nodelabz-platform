@@ -109,8 +109,8 @@ export async function authenticateApiKey(
       where: { id: record.id },
       data: { value: updatedValue },
     })
-    .catch(() => {
-      /* fire-and-forget */
+    .catch((err: unknown) => {
+      console.error("Failed to update API key lastUsedAt:", err);
     });
 
   return {

@@ -4,8 +4,7 @@ import { syncIntegration } from "./sync-integration";
 
 /**
  * Scheduled task: syncs all active integrations every hour.
- * Configure in Trigger.dev dashboard or via code:
- *   schedules.create({ task: "sync-all-integrations", cron: "0 * * * *" })
+ * Uses batchTriggerAndWait for parallel execution instead of sequential.
  */
 export const syncAllScheduled = schedules.task({
   id: "sync-all-integrations",
@@ -13,7 +12,7 @@ export const syncAllScheduled = schedules.task({
     const integrations = await prisma.integration.findMany({
       where: {
         status: { in: ["active", "expired"] },
-        platform: { in: ["meta_ads", "google_ads", "ga4"] },
+        platform: { in: ["meta_ads", "google_ads", "ga4", "tiktok"] },
       },
       select: {
         id: true,
@@ -24,39 +23,39 @@ export const syncAllScheduled = schedules.task({
 
     logger.info("Starting scheduled sync", { count: integrations.length });
 
-    const results: Array<{ tenantId: string; platform: string; success: boolean }> = [];
-
-    for (const integration of integrations) {
-      try {
-        const result = await syncIntegration.triggerAndWait({
-          tenantId: integration.tenantId,
-          integrationId: integration.id,
-          platform: integration.platform,
-        });
-
-        results.push({
-          tenantId: integration.tenantId,
-          platform: integration.platform,
-          success: !!result?.ok && (result.ok as any).success,
-        });
-      } catch (error) {
-        logger.error("Sync failed for integration", {
-          integrationId: integration.id,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        results.push({
-          tenantId: integration.tenantId,
-          platform: integration.platform,
-          success: false,
-        });
-      }
+    if (integrations.length === 0) {
+      return { succeeded: 0, failed: 0, total: 0 };
     }
 
-    const succeeded = results.filter((r) => r.success).length;
-    const failed = results.filter((r) => !r.success).length;
+    // Trigger all syncs in parallel (batch) instead of sequentially
+    const batchItems = integrations.map((integration) => ({
+      payload: {
+        tenantId: integration.tenantId,
+        integrationId: integration.id,
+        platform: integration.platform,
+      },
+    }));
 
-    logger.info("Scheduled sync complete", { succeeded, failed, total: results.length });
+    try {
+      const batchResult = await syncIntegration.batchTriggerAndWait(batchItems);
 
-    return { succeeded, failed, total: results.length };
+      let succeeded = 0;
+      let failed = 0;
+      for (const run of batchResult.runs) {
+        if (run.ok) {
+          succeeded++;
+        } else {
+          failed++;
+        }
+      }
+
+      logger.info("Scheduled sync complete", { succeeded, failed, total: integrations.length });
+      return { succeeded, failed, total: integrations.length };
+    } catch (error) {
+      logger.error("Batch sync failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { succeeded: 0, failed: integrations.length, total: integrations.length };
+    }
   },
 });

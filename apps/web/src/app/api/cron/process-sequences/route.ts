@@ -33,6 +33,8 @@ export async function processSequenceEnrollments(
   const enrollments = await prisma.sequenceEnrollment.findMany({
     where: whereClause,
     include: { sequence: true },
+    take: 500,
+    orderBy: { nextSendAt: "asc" },
   });
 
   console.log(
@@ -65,8 +67,12 @@ export async function processSequenceEnrollments(
       });
       if (!template) {
         console.warn(
-          `[Process Sequences] Template ${currentStepData.templateId} not found for enrollment ${enrollment.id}`
+          `[Process Sequences] Template ${currentStepData.templateId} not found — pausing enrollment ${enrollment.id}`
         );
+        await prisma.sequenceEnrollment.update({
+          where: { id: enrollment.id },
+          data: { status: "paused" },
+        });
         result.errors++;
         continue;
       }
@@ -136,7 +142,7 @@ export async function processSequenceEnrollments(
 export async function GET(request: NextRequest) {
   // Verify cron secret (skip in dev)
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && process.env.NODE_ENV === "production") {
+  if (cronSecret) {
     const authHeader = request.headers.get("authorization");
     if (authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

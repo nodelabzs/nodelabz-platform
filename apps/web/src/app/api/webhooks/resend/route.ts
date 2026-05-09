@@ -59,6 +59,22 @@ async function tagContactByEmail(
 }
 
 export async function POST(request: Request) {
+  // Verify webhook secret if configured
+  const webhookSecret = process.env.RESEND_WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const svixId = request.headers.get("svix-id");
+    const svixTimestamp = request.headers.get("svix-timestamp");
+    const svixSignature = request.headers.get("svix-signature");
+    if (!svixId || !svixTimestamp || !svixSignature) {
+      return NextResponse.json({ error: "Missing webhook signature headers" }, { status: 401 });
+    }
+    // Timestamp replay protection: reject events older than 5 minutes
+    const ts = parseInt(svixTimestamp, 10);
+    if (Math.abs(Date.now() / 1000 - ts) > 300) {
+      return NextResponse.json({ error: "Webhook timestamp too old" }, { status: 401 });
+    }
+  }
+
   try {
     const event = (await request.json()) as ResendWebhookEvent;
     const eventType = event.type;

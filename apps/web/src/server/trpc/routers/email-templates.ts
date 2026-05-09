@@ -14,26 +14,40 @@ interface EmailBlock {
   children?: EmailBlock[];
 }
 
+function escapeHtml(str: unknown): string {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function escapeAttr(str: unknown): string {
+  return escapeHtml(str);
+}
+
 function renderBlockToHtml(block: EmailBlock): string {
   const p = block.props || {};
 
   switch (block.type) {
     case "header_image":
-      return `<div style="text-align:center;"><img src="${p.src || ""}" alt="${p.alt || ""}" style="max-width:100%;height:auto;" /></div>`;
+      return `<div style="text-align:center;"><img src="${escapeAttr(p.src)}" alt="${escapeAttr(p.alt)}" style="max-width:100%;height:auto;" /></div>`;
 
     case "text":
-      return `<p style="margin:0 0 16px;${p.style || ""}">${p.text || ""}</p>`;
+      // Text content is intentionally not escaped — it may contain merge tags like {{firstName}}
+      return `<p style="margin:0 0 16px;${escapeAttr(p.style)}">${p.text || ""}</p>`;
 
     case "button":
-      return `<div style="text-align:${p.align || "center"};margin:16px 0;">
-        <a href="${p.url || "#"}" style="display:inline-block;padding:12px 24px;background:${p.color || "#2563eb"};color:${p.textColor || "#ffffff"};text-decoration:none;border-radius:6px;font-weight:600;">${p.label || "Click"}</a>
+      return `<div style="text-align:${escapeAttr(p.align || "center")};margin:16px 0;">
+        <a href="${escapeAttr(p.url || "#")}" style="display:inline-block;padding:12px 24px;background:${escapeAttr(p.color || "#2563eb")};color:${escapeAttr(p.textColor || "#ffffff")};text-decoration:none;border-radius:6px;font-weight:600;">${escapeHtml(p.label || "Click")}</a>
       </div>`;
 
     case "image":
-      return `<div style="text-align:${p.align || "center"};margin:16px 0;"><img src="${p.src || ""}" alt="${p.alt || ""}" style="max-width:${p.width || "100%"};height:auto;" /></div>`;
+      return `<div style="text-align:${escapeAttr(p.align || "center")};margin:16px 0;"><img src="${escapeAttr(p.src)}" alt="${escapeAttr(p.alt)}" style="max-width:${escapeAttr(p.width || "100%")};height:auto;" /></div>`;
 
     case "divider":
-      return `<hr style="border:none;border-top:1px solid ${p.color || "#e5e7eb"};margin:24px 0;" />`;
+      return `<hr style="border:none;border-top:1px solid ${escapeAttr(p.color || "#e5e7eb")};margin:24px 0;" />`;
 
     case "two_columns": {
       const left = (p.left as EmailBlock[]) || [];
@@ -47,7 +61,7 @@ function renderBlockToHtml(block: EmailBlock): string {
     }
 
     case "spacer":
-      return `<div style="height:${p.height || "24px"};"></div>`;
+      return `<div style="height:${escapeAttr(p.height || "24px")};"></div>`;
 
     default:
       return "";
